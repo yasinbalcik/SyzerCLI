@@ -203,3 +203,23 @@ test('trackOut orca worker id goes queued -> running with orca flag', () => {
   const n = snapOf(st).nodes[0];
   assert.equal(n.status, 'running'); assert.equal(n.orca, true);
 });
+
+test('tree i18n: en/tr keys exist, differ, de falls back to en', () => {
+  const keys = ['tree_none', 'tree_log', 'tree_more', 'tree_hint'];
+  const { t } = require('../src/i18n');
+  const got = {};
+  try {
+    for (const l of ['en', 'tr']) {
+      setLang(l); got[l] = {};
+      for (const k of keys) {
+        const v = t(k);
+        assert.ok(typeof v === 'string' && v.length > 0 && v !== k, l + ':' + k);
+        got[l][k] = v;
+      }
+      assert.ok(t('tree_more', 3).includes('3'), l + ' tree_more');
+    }
+    for (const k of keys) assert.notEqual(got.tr[k], got.en[k], 'tr differs: ' + k);
+    setLang('de');
+    for (const k of keys) assert.equal(t(k), got.en[k], 'de falls back: ' + k);
+  } finally { setLang('en'); }
+});

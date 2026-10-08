@@ -46,6 +46,8 @@ module.exports = {
   /plan · /go       plan first, then approve and execute`,
   },
   tr: {
+    tree_hint: 'esc geri · ↑↓ seç · enter ajanı aç',
+    tree_none: 'henüz alt ajan yok', tree_log: 'olay günlüğü', tree_more: '+{0} daha',
     agents_running: '{0} agent çalışıyor',
     sub_summary: '{0} · {1} araç çağrısı · {2} tok · {3}s',
     agents_title: 'Agent’lar', agent_builtin: 'yerleşik', agent_tools: 'araçlar',

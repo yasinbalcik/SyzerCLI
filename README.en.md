@@ -39,7 +39,7 @@ syzer doctor                           # check install, keys, network, Orca patc
 syzer export last --out chat.md        # save a session as Markdown
 ```
 
-In chat, `/help` lists every command. `/plan` produces a read-only plan first, `/go` executes it.
+In chat, `/help` lists every command. `/plan` produces a read-only plan first, `/go` executes it. `/tree` shows the agent map: the live subagent tree and event log.
 
 ## Main commands
 
