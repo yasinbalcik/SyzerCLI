@@ -36,6 +36,7 @@ const HELP = `SyzerCLI v${pkg.version}
   syzer subagent [model <id|inherit> | effort <lvl|inherit> | concurrency <n>]
   syzer stats                 requests / tokens per day
   syzer lang [tr|en|de|es|ja|zh|ko|pl]
+  syzer web [--port 8788] [--no-open]  local web UI (chat, keys, usage, settings)
   syzer setup                 run the first-time setup wizard again
   syzer update                check GitHub for a newer version (the syzer.exe launcher installs it)
   syzer usage --summary --json  percent used per provider (for status bars / Orca)
@@ -53,6 +54,7 @@ function parseArgs(argv) {
     else if (a === '--no-tools') f.noTools = true;
     else if (a === '--no-check') f.noCheck = true;
     else if (a === '--check') f.check = true;
+    else if (a === '--no-open') f.noOpen = true;
     else if (a === '--summary') f.summary = true;
     else if (a === '--no-update') f.noUpdate = true;
     else if (a === '--all') f.all = true;
@@ -152,6 +154,7 @@ async function main() {
     }
   }
   if (cmd === 'provider') return cmds.providerCmd(cfg, sub);
+  if (cmd === 'web') return require('../src/web').start(cfg, { port: Number(f.port) || 8788, open: !f.noOpen });
   if (cmd === 'setup') return require('../src/setup').run(cfg);
   if (cmd === 'update') return require('../src/update-cmd').run(cfg);
   if (cmd === 'usage' && f.summary) return cmds.usageSummary(cfg, { json: f.json });

@@ -10,7 +10,7 @@ const dist = path.join(root, 'dist');
 fs.mkdirSync(dist, { recursive: true });
 
 const tarName = `syzercli-${pkg.version}.tar.gz`;
-const r = spawnSync('tar', ['-czf', `dist/${tarName}`, 'bin', 'src', 'package.json', 'README.md'], { cwd: root, stdio: 'inherit' });
+const r = spawnSync('tar', ['-czf', `dist/${tarName}`, 'bin', 'src', 'assets', 'package.json', 'README.md'], { cwd: root, stdio: 'inherit' });
 if (r.status !== 0) process.exit(1);
 
 // launcher: updater.js'i tek dosyaya göm (SEA yalnızca tek betik alır)

@@ -3,6 +3,7 @@
 // İlk kurulum sihirbazı, güncelleme ve özet kullanım metinleri.
 module.exports = {
   en: {
+    web_open: 'Web UI:',
     su_welcome: "Welcome to SyzerCLI! Let's do a quick first-time setup (Enter keeps the default).",
     su_lang: 'Choose your language:', su_choice: 'Your choice',
     su_tutorial: `How it works
@@ -18,6 +19,7 @@ module.exports = {
     um_title: 'Total', um_line: '{0}: {1}% used · {2}/{3} keys ready',
   },
   tr: {
+    web_open: 'Web arayüzü:',
     su_welcome: "SyzerCLI'ye hoş geldin! Kısa bir ilk kurulum yapalım (Enter = varsayılan).",
     su_lang: 'Dilini seç:', su_choice: 'Seçimin',
     su_tutorial: `Nasıl çalışır
@@ -33,6 +35,7 @@ module.exports = {
     um_title: 'Toplam', um_line: '{0}: %{1} kullanıldı · {2}/{3} key hazır',
   },
   de: {
+    web_open: 'Web-Oberfläche:',
     su_welcome: 'Willkommen bei SyzerCLI! Kurze Ersteinrichtung (Enter = Standard).',
     su_lang: 'Sprache wählen:', su_choice: 'Deine Wahl',
     su_tutorial: `So funktioniert es
@@ -48,6 +51,7 @@ module.exports = {
     um_title: 'Gesamt', um_line: '{0}: {1}% verbraucht · {2}/{3} Keys bereit',
   },
   es: {
+    web_open: 'Interfaz web:',
     su_welcome: '¡Bienvenido a SyzerCLI! Configuración inicial rápida (Enter = predeterminado).',
     su_lang: 'Elige tu idioma:', su_choice: 'Tu elección',
     su_tutorial: `Cómo funciona
@@ -63,6 +67,7 @@ module.exports = {
     um_title: 'Total', um_line: '{0}: {1}% usado · {2}/{3} keys listas',
   },
   ja: {
+    web_open: 'Web UI:',
     su_welcome: 'SyzerCLI へようこそ！簡単な初期設定をします（Enter で既定値）。',
     su_lang: '言語を選択:', su_choice: '選択',
     su_tutorial: `使い方
@@ -78,6 +83,7 @@ module.exports = {
     um_title: '合計', um_line: '{0}: {1}% 使用 · {2}/{3} キー利用可',
   },
   zh: {
+    web_open: '网页界面：',
     su_welcome: '欢迎使用 SyzerCLI！进行快速初始设置（回车=默认）。',
     su_lang: '选择语言：', su_choice: '你的选择',
     su_tutorial: `使用方式
@@ -93,6 +99,7 @@ module.exports = {
     um_title: '总计', um_line: '{0}：已用 {1}% · {2}/{3} 个密钥可用',
   },
   ko: {
+    web_open: '웹 UI:',
     su_welcome: 'SyzerCLI에 오신 것을 환영합니다! 간단한 초기 설정을 진행합니다 (Enter = 기본값).',
     su_lang: '언어 선택:', su_choice: '선택',
     su_tutorial: `사용 방법
@@ -108,6 +115,7 @@ module.exports = {
     um_title: '합계', um_line: '{0}: {1}% 사용 · 키 {2}/{3} 사용 가능',
   },
   pl: {
+    web_open: 'Interfejs WWW:',
     su_welcome: 'Witaj w SyzerCLI! Szybka konfiguracja początkowa (Enter = domyślnie).',
     su_lang: 'Wybierz język:', su_choice: 'Twój wybór',
     su_tutorial: `Jak to działa

@@ -24,7 +24,7 @@ const cmds = require('./cmds');
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const BUILTIN = ['help', 'model', 'models', 'usage', 'keys', 'lang', 'perm', 'skills', 'context', 'clear', 'exit',
   'effort', 'fallback', 'undo', 'resume', 'stats', 'plan', 'go', 'agents', 'subagent',
-  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider'];
+  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web'];
 const LABEL = { read_file: 'Read', write_file: 'Write', edit_file: 'Update', list_dir: 'List', find_files: 'Find', search_files: 'Search', run_command: 'Run', use_skill: 'Skill', spawn_agent: 'Agent' };
 const PLAN_PREFIX = '[PLAN MODE] Use read-only tools only. Do NOT modify anything. Investigate, then answer with a concise numbered plan and ask for approval at the end.\n\n';
 
@@ -191,6 +191,7 @@ async function start(cfg, opts = {}, io = {}) {
   setTitle(cfg, null);
 
   let ctrl = null;
+  let webUi = null;
   editor.onInterrupt = () => { if (ctrl) ctrl.abort(); };
 
   const doCompact = async (hint) => {
@@ -285,6 +286,12 @@ async function start(cfg, opts = {}, io = {}) {
         const k = await editor.readKey(C.cyan(t('effort_pick')));
         const lvl = cmds.EFFORTS[parseInt(k, 10) - 1];
         if (lvl && (await cmds.effortSet(cfg, lvl, s.model))) s.effort = cfg.effort;
+        return;
+      }
+      case 'web': {
+        if (!webUi) webUi = await require('./web').start(cfg, { port: Number(arg) || 8788, cwd: s.cwd, quiet: true });
+        else require('child_process').spawn('cmd', ['/c', 'start', '', webUi.url], { stdio: 'ignore', detached: true }).unref();
+        console.log(`${C.green('✔')} ${t('web_open')} ${C.cyan(webUi.url)}`);
         return;
       }
       case 'provider': {

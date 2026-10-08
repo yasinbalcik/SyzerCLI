@@ -13,6 +13,11 @@ Kurulum: bu klasörde `npm link` → `syzer`
 - Yeni sürüm yayınlama: `package.json` sürümünü artır → `npm run build:exe` → `gh release create vX.Y.Z dist/syzercli-X.Y.Z.tar.gz dist/syzer.exe`.
 - `syzer usage --summary --json` sağlayıcı başına kalan hak yüzdesini verir (Orca entegrasyonu: `SyzerCLI-Orca`).
 
+## Web arayüzü
+
+`syzer web [--port 8788] [--no-open]` veya sohbette `/web`: tarayıcıda sohbet (akış, araç çağrıları, onay butonları), sağlayıcı başına kullanım yüzdesi, key ekleme/silme/seçme, model/efor/izin/dil ayarı.
+Yalnızca `127.0.0.1`'e bağlanır; ajan komut çalıştırabildiği için adres rastgele bir erişim token'ı içerir (çerezle korunur, Host/Origin denetlenir).
+
 ## Sağlayıcılar
 
 | | OpenRouter | NVIDIA (build.nvidia.com) |
