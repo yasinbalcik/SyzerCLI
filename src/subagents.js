@@ -53,7 +53,7 @@ function makeSub(parent, agent, label, id, run) {
       thinking(chunk) { if (run) run.chars += String(chunk || '').length; po.agentUpdate && po.agentUpdate(id, '…'); },
       text(chunk) { if (run) { const c = String(chunk || ''); run.chars += c.length; run.live = (run.live + c).slice(-6000); } },
       endText() {},
-      tool(name, summary) { if (run) run.steps.push({ tool: name, summary: String(summary).slice(0, 300) }); po.agentUpdate && po.agentUpdate(id, `${name}(${trunc(String(summary).replace(/\s+/g, ' '), 48)})`, run ? run.steps.length : undefined); },
+      tool(name, summary) { if (run) run.steps.push({ tool: name, summary: String(summary).slice(0, 300) }); po.agentUpdate && po.agentUpdate(id, `${name}(${trunc(String(summary).replace(/\s+/g, ' '), 48)})`, run ? run.steps.length : undefined, run ? Math.round(run.chars / 4) : undefined); },
       toolResult(ok, text, ui) { if (run && run.steps.length) { const st = run.steps[run.steps.length - 1]; st.ok = ok; st.result = (ui && ui.summary ? ui.summary : String(text)).slice(0, 600); run.chars += String(text || '').length; } },
       warn(msg) { po.warn(`[${label}] ${msg}`); },
     },
@@ -84,6 +84,7 @@ async function spawn(parent, call, signal) {
   try {
     const sub = makeSub(parent, agent, label, id, run);
     const r = await limited(parent.cfg.subagentConcurrency || 3, () => {
+      po.agentRun && po.agentRun(id);
       sub.spread = gate.active > 1 ? id : null; // birden fazla ajan aynı anda çalışıyorsa key'lere dağıt
       return runTurn(sub, a.prompt, signal);
     });

@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { vlen, strip } = require('../src/ui');
 const { setLang } = require('../src/i18n');
-const { createStore, renderTree, renderCompact } = require('../src/agent-tree');
+const { createStore, renderTree, renderCompact, trackOut } = require('../src/agent-tree');
 
 setLang('en');
 
@@ -114,11 +114,83 @@ test('renderTree log tail', () => {
   assert.ok(out.length <= 20);
   const txt = all(out);
   assert.ok(txt.includes('ev29'));
-  assert.ok(!txt.includes('ev0 ') && !txt.includes('ev1 '));
+  assert.ok(!/\bev0\b/.test(txt) && !/\bev1\b/.test(txt));
+  assert.ok(/\bev27\b/.test(txt) && /\bev28\b/.test(txt) && /\bev29\b/.test(txt));
 });
 
 test('orca node label', () => {
   const s = mk(1, { orca: true });
   assert.ok(all(renderTree(s.snapshot(), { width: 100, rows: 20, now: 2000 })).includes('Orca'));
   assert.ok(all(renderTree(s.snapshot(), { width: 40, rows: 20, now: 2000 })).includes('Orca'));
+});
+
+test('fit strips control chars and ANSI from untrusted text', () => {
+  const s = mk(1);
+  s.update(1, { action: 'a\x1b[31mred\x07bell\x1b]0;t\x07z' });
+  s.event('ev\x1b[2Jx\x07y', 1);
+  for (const width of [36, 100]) {
+    const out = renderTree(s.snapshot(), { width, rows: 30, now: 2000 });
+    const raw = out.join('\n').replace(/\x1b\[[0-9;]*m/g, '');
+    assert.ok(!/[\x00-\x08\x0b-\x1f\x7f]/.test(raw), 'raw control char leaked');
+  }
+});
+
+test('narrow overflow: last shown node uses branch, more line closes', () => {
+  const s = mk(10);
+  const out = renderTree(s.snapshot(), { width: 40, rows: 6, now: 2000 }).map((l) => strip(l));
+  const more = out.findIndex((l) => l.startsWith('└'));
+  assert.ok(more > 0);
+  assert.ok(out[more - 1].startsWith('├'));
+  assert.equal(out.filter((l) => l.startsWith('└')).length, 1);
+});
+
+function fakeOut() {
+  const calls = [];
+  const o = {};
+  for (const k of ['agentStart', 'agentUpdate', 'agentDone', 'warn']) o[k] = (...a) => calls.push([k, ...a]);
+  return { o, calls };
+}
+const snapOf = (st) => st.snapshot();
+
+test('trackOut feeds start/update/done', () => {
+  const st = createStore(); const { o } = fakeOut(); trackOut(o, st);
+  o.agentStart(1, 'explorer: x');
+  assert.deepEqual(snapOf(st).nodes.map((n) => [n.kind, n.label, n.status]), [['explorer', 'x', 'queued']]);
+  o.agentRun(1);
+  assert.equal(snapOf(st).nodes[0].status, 'running');
+  o.agentUpdate(1, 'Read(a)', 2, 100);
+  const n = snapOf(st).nodes[0];
+  assert.equal(n.steps, 2); assert.equal(n.tokens, 100); assert.equal(n.action, 'Read(a)');
+  o.agentDone(1, { ok: true, model: 'm/x:free' });
+  const d = snapOf(st).nodes[0];
+  assert.equal(d.status, 'done'); assert.equal(d.model, 'x');
+});
+
+test('trackOut failed run', () => {
+  const st = createStore(); const { o } = fakeOut(); trackOut(o, st);
+  o.agentStart(2, 'general: y');
+  o.agentDone(2, { ok: false, report: 'failed: boom\nmore' });
+  const sn = snapOf(st);
+  assert.equal(sn.nodes[0].status, 'failed');
+  assert.ok(sn.log.some((e) => e.text.includes('boom') && !e.text.includes('more')));
+});
+
+test('trackOut warn goes to log', () => {
+  const st = createStore(); const { o } = fakeOut(); trackOut(o, st);
+  o.warn('switching key');
+  assert.ok(snapOf(st).log.some((e) => e.text.includes('switching key')));
+});
+
+test('trackOut orca id', () => {
+  const st = createStore(); const { o } = fakeOut(); trackOut(o, st);
+  o.agentStart('wab12', 'worker: Syzer: t');
+  o.agentStart(3, 'worker: t');
+  const ns = snapOf(st).nodes;
+  assert.equal(ns[0].orca, true); assert.equal(ns[1].orca, false);
+});
+
+test('trackOut calls wrapped originals', () => {
+  const st = createStore(); const { o, calls } = fakeOut(); trackOut(o, st);
+  o.agentStart(1, 'a: b'); o.agentUpdate(1, 'x', 1, 5); o.agentDone(1, { ok: true }); o.warn('w');
+  assert.deepEqual(calls.map((c) => c[0]), ['agentStart', 'agentUpdate', 'agentDone', 'warn']);
 });

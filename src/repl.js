@@ -15,6 +15,7 @@ const { undoLast } = require('./tools');
 const providers = require('./providers');
 const { Editor } = require('./input');
 const { Dock } = require('./dock');
+const { createStore, trackOut } = require('./agent-tree');
 const { McpManager } = require('./mcp');
 const { killAll } = require('./tools');
 const compactMod = require('./compact');
@@ -258,6 +259,10 @@ async function start(cfg, opts = {}, io = {}) {
   let webUi = null;
   editor.onInterrupt = () => { if (ctrl) ctrl.abort(); };
   const dock = new Dock({ editor });
+  const tree = createStore();
+  s.tree = tree;
+  trackOut(s.out, tree);
+  s.out.getTree = () => tree.snapshot();
   s.out.getRuns = () => s.runs || [];
   dock.getRun = (id) => (s.runs || []).find((r) => r.id === id) || null;
 
@@ -273,6 +278,8 @@ async function start(cfg, opts = {}, io = {}) {
 
   const chat = async (text, images = []) => {
     ctrl = new AbortController();
+    tree.newTurn();
+    tree.setMain({ model: s.model, effort: s.effort });
     let docked = false;
     const closeDock = () => { if (docked) { docked = false; s.out.setDock(null); dock.end(); } };
     try {

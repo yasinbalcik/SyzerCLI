@@ -9,7 +9,11 @@ const MARK = { queued: '…', running: '●', done: '✓', failed: '✖' };
 
 // Düz metni görünür genişliğe göre keser (CJK 2 hücre); sığmazsa sonuna … koyar.
 function fit(s, n) {
-  s = String(s).replace(/[\r\n\t]+/g, ' ');
+  s = String(s)
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?/g, '')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, '');
   if (n <= 0) return '';
   if (vlen(s) <= n) return s;
   let out = '';
@@ -93,12 +97,12 @@ function mainText(snap) {
   return 'main' + (m.model ? ' · ' + shortModel(m.model) : '') + (m.effort ? ' · ' + m.effort : '');
 }
 
-function renderCompact(snap, { width, selected = -1, now = Date.now(), max = 6 } = {}) {
+function renderCompact(snap, { width, selected = -1, now = Date.now(), max = 6, more = false } = {}) {
   const out = [C.orange(fit(mainText(snap), width))];
   const shown = snap.nodes.slice(0, max);
   const extra = snap.nodes.length - shown.length;
   shown.forEach((n, i) => {
-    const last = i === shown.length - 1 && extra <= 0;
+    const last = i === shown.length - 1 && extra <= 0 && !more;
     const body = kindLabel(n) + (n.action ? ' ' + n.action : n.label ? ' ' + n.label : '') +
       '  ' + stats(n, now);
     const line = (last ? '└ ' : '├ ') + statusColor(n.status, MARK[n.status]) + ' ' + fit(body, width - 4);
@@ -157,10 +161,10 @@ function renderTree(snap, { width, rows = 24, selected = -1, now = Date.now() } 
     } else {
       const cap = Math.max(1, budget);
       const vis = cap >= snap.nodes.length ? snap.nodes : snap.nodes.slice(0, Math.max(1, cap - 1));
-      const comp = renderCompact({ main: snap.main, nodes: vis, log: [] },
-        { width, selected, now, max: vis.length });
-      lines.push(...comp.slice(1));
       const hidden = snap.nodes.length - vis.length;
+      const comp = renderCompact({ main: snap.main, nodes: vis, log: [] },
+        { width, selected, now, max: vis.length, more: hidden > 0 });
+      lines.push(...comp.slice(1));
       if (hidden > 0) lines.push(C.gray(fit('└ ' + t('tree_more', hidden), width)));
     }
   }
@@ -177,7 +181,42 @@ function renderTree(snap, { width, rows = 24, selected = -1, now = Date.now() } 
   return lines.slice(0, Math.max(1, rows));
 }
 
-// Gövde sonraki görevde yazılacak
-function trackOut() { throw new Error('trackOut: not implemented'); }
+// Mevcut makeOut() olaylarını (agentStart/Update/Done, warn) depoya yansıtır; orijinalleri önce çağırır.
+function trackOut(out, store) {
+  const orig = {
+    agentStart: out.agentStart, agentUpdate: out.agentUpdate,
+    agentDone: out.agentDone, warn: out.warn,
+  };
+  const call = (k, args) => (orig[k] ? orig[k].apply(out, args) : undefined);
+  out.agentStart = (id, label) => {
+    call('agentStart', [id, label]);
+    const text = String(label || '');
+    const ix = text.indexOf(':');
+    const kind = ix >= 0 ? text.slice(0, ix).trim() : text.trim();
+    const name = ix >= 0 ? text.slice(ix + 1).trim() : '';
+    store.start(id, { kind, label: name, orca: typeof id === 'string' && id[0] === 'w' });
+    store.event('started', id);
+  };
+  out.agentRun = (id) => store.run(id);
+  out.agentUpdate = (id, action, steps, tokens) => {
+    call('agentUpdate', [id, action, steps, tokens]);
+    store.update(id, { action, steps: steps == null ? undefined : steps, tokens: tokens == null ? undefined : tokens });
+  };
+  out.agentDone = (id, run) => {
+    call('agentDone', [id, run]);
+    const ok = !!(run && run.ok);
+    store.finish(id, { ok, model: shortModel(run && run.model) });
+    if (ok) store.event('done', id);
+    else {
+      const first = String((run && run.report) || '').split('\n').filter(Boolean)[0] || '';
+      store.event('error: ' + first.replace(/^failed:\s*/i, ''), id);
+    }
+  };
+  out.warn = (msg) => {
+    call('warn', [msg]);
+    store.event(String(msg));
+  };
+  return out;
+}
 
 module.exports = { createStore, renderTree, renderCompact, trackOut };
