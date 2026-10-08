@@ -5,9 +5,8 @@ const { C } = require('./ui');
 const { points: LOGO_POINTS } = require('./logo-points');
 
 const LAYERS = 3; // z katmanı sayısı (kalınlık hissi)
-const LAYER_D = 0.12;
+const LAYER_D = 0.06;
 const CAM = 2.4; // perspektif uzaklığı
-const ZR = 0.9; // derinlik normalizasyonu için yarıçap sınırı
 
 // Geçerli [x, y] çiftlerini döndürür; bozuk girdiler atılır.
 function cleanPoints(points) {
@@ -23,7 +22,7 @@ function projectPoints(t, cols, rows, points = LOGO_POINTS) {
   const tilt = 0.18 * Math.sin(t * 0.7);
   const ca = Math.cos(angle), sa = Math.sin(angle);
   const ct = Math.cos(tilt), st = Math.sin(tilt);
-  const scaleY = Math.min(rows, cols / 2) * 0.42;
+  const scaleY = Math.min(rows * 0.62, (cols / 4) * 0.95);
   const scaleX = scaleY * 2; // hücre en/boy oranı 2:1
   const out = [];
   for (const [px, py] of pts) {
@@ -35,16 +34,20 @@ function projectPoints(t, cols, rows, points = LOGO_POINTS) {
       const y2 = py * ct - z1 * st;
       const z2 = py * st + z1 * ct;
       const f = CAM / (CAM - z2);
-      const z = Math.min(1, Math.max(0, (z2 / ZR + 1) / 2));
       out.push({
         x: x1 * f,
         y: y2 * f,
         cx: Math.round(cols / 2 + x1 * f * scaleX),
         cy: Math.round(rows / 2 + y2 * f * scaleY),
-        z,
+        z: z2,
       });
     }
   }
+  // Derinlik kare başına göreli: en yakın = 1, en uzak = 0.
+  let lo = Infinity, hi = -Infinity;
+  for (const p of out) { if (p.z < lo) lo = p.z; if (p.z > hi) hi = p.z; }
+  const span = hi - lo;
+  for (const p of out) p.z = span > 1e-9 ? (p.z - lo) / span : 1;
   return out;
 }
 
@@ -59,8 +62,8 @@ function pickFront(cells) {
   return [...best.values()];
 }
 
-const glyph = (z) => (z < 0.35 ? '·' : z < 0.6 ? '∙' : z < 0.82 ? '•' : '●');
-const paint = (z, ch) => (z < 0.45 ? C.gray(ch) : z < 0.75 ? C.orange(ch) : C.bold(C.orange(ch)));
+const glyph = (z) => (z < 0.25 ? '·' : z < 0.5 ? '∙' : z < 0.75 ? '•' : '●');
+const paint = (z, ch) => (z < 0.3 ? C.gray(ch) : z < 0.75 ? C.orange(ch) : C.bold(C.orange(ch)));
 
 // Tam `rows` satırlık kare üretir; her satır görünür genişlikte <= cols.
 function renderFrame({ t = 0, cols, rows, color = true, points = LOGO_POINTS } = {}) {

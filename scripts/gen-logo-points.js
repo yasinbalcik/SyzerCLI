@@ -14,7 +14,7 @@ try {
 }
 
 const WIDTH = 192; // rasterize genişliği (px)
-const STEP = 3; // ızgara örnekleme adımı (px)
+const STEP = 2; // ızgara örnekleme adımı (px)
 const root = path.join(__dirname, '..');
 const svg = fs.readFileSync(path.join(root, 'assets', 'syzer-logo.svg'), 'utf8');
 const img = new Resvg(svg, { fitTo: { mode: 'width', value: WIDTH } }).render();

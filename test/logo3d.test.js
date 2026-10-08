@@ -10,7 +10,7 @@ const { renderFrame, projectPoints, pickFront, LAYERS } = require('../src/logo3d
 const DOTS = /[·∙•●]/g;
 
 test('points data sane', () => {
-  assert.ok(points.length >= 900 && points.length <= 2000, 'count ' + points.length);
+  assert.ok(points.length >= 900 && points.length <= 6000, 'count ' + points.length);
   const seen = new Set();
   for (const p of points) {
     assert.ok(Array.isArray(p) && p.length === 2);
@@ -41,10 +41,15 @@ test('renderFrame content', () => {
   assert.ok(!/\x1b/.test(f));
 });
 
-test('depth colors', () => {
-  const f = renderFrame({ t: 0.9, cols: 70, rows: 28 }).join('\n');
-  assert.ok(f.includes(C.gray('·')), 'gray far dot');
-  assert.ok(f.includes(C.orange('●')) || f.includes(C.bold(C.orange('●'))), 'orange near dot');
+test('depth colors (relative per frame)', () => {
+  for (const t of [0, 0.9]) {
+    const f = renderFrame({ t, cols: 70, rows: 26 }).join('\n');
+    assert.ok(f.includes(C.bold(C.orange('●'))), 'bold orange front dot at t=' + t);
+    assert.ok(f.includes(C.gray('·')), 'gray back dot at t=' + t);
+  }
+  // yüz yüze: ön katman kazanır, çoğunluk parlak ●
+  const face = renderFrame({ t: 0, cols: 70, rows: 26, color: false }).join('');
+  assert.ok((face.match(/●/g) || []).length > (face.match(DOTS) || []).length / 2);
 });
 
 test('rotation depth ordering', () => {
