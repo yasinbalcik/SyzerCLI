@@ -25,7 +25,18 @@ function selfCmd() {
   return `"${process.execPath}" "${path.join(__dirname, '..', 'bin', 'syzer.js')}"`;
 }
 
-const markerOf = (cmd) => `/*syzer-orca:${PATCH_VERSION}:${crypto.createHash('sha1').update(cmd).digest('hex').slice(0, 8)}*/`;
+// Yama kaynağının özeti: orca-edits*/snippet dosyaları değişince işaret kendiliğinden değişir (PATCH_VERSION artırmayı unutmak yamayı bayatlatamaz)
+function sourceHash() {
+  const h = crypto.createHash('sha1');
+  const files = [];
+  for (const f of fs.readdirSync(__dirname)) if (/^orca-(edits|analytics)[\w-]*\.js$/.test(f)) files.push(path.join(__dirname, f));
+  try { const sd = path.join(__dirname, 'orca-snippets'); for (const f of fs.readdirSync(sd)) files.push(path.join(sd, f)); } catch { /* yok */ }
+  for (const f of files.sort()) { try { h.update(path.basename(f)).update(fs.readFileSync(f)); } catch { /* önemsiz */ } }
+  return h.digest('hex');
+}
+const markerOf = (cmd) => `/*syzer-orca:${PATCH_VERSION}:${crypto.createHash('sha1').update(cmd).update(sourceHash()).digest('hex').slice(0, 8)}*/`;
+const GROUPS_FILE = path.join(os.homedir(), '.syzercli', 'orca', 'groups.json');
+const readGroups = () => { try { return JSON.parse(fs.readFileSync(GROUPS_FILE, 'utf8')); } catch { return null; } };
 const edits = (cmd) => require('./orca-edits').edits(cmd, ICON, markerOf(cmd));
 
 // ---------- asar (bağımlılıksız) ----------
@@ -108,7 +119,8 @@ function status() {
     const i = inspect(dir);
     const want = markerOf(cmd).match(markerRe);
     const applied = !!i.marker && i.marker.v === Number(want[1]) && i.marker.h === want[2];
-    return { found: true, dir, orcaVersion: i.orcaVersion, patched: !!i.marker, upToDate: applied, running: orcaRunning() };
+    const g = readGroups();
+    return { found: true, dir, orcaVersion: i.orcaVersion, patched: !!i.marker, upToDate: applied, running: orcaRunning(), ...(g && g.orcaVersion === i.orcaVersion ? { groups: g.applied, skippedGroups: g.skipped } : {}) };
   } catch (e) { return { found: true, dir, error: e.message }; }
 }
 
@@ -151,7 +163,7 @@ function buildPatched(dir, srcAsar, unpackedSrc, cmd) {
       e.size = buf.length;
       if (e.unpacked) unpacked.push({ f, buf }); else extra.push({ entry: e, buf, f });
     }
-    return { header, data: a.copyData(), extra, unpacked, skipped };
+    return { header, data: a.copyData(), extra, unpacked, skipped, groupNames: [...groups.keys()] };
   } finally { a.close(); }
 }
 
@@ -216,6 +228,7 @@ function patch(opts = {}) {
       for (const { f, buf } of built.extra) if (!chk.read(f).equals(buf)) throw new Error(`verify failed: ${f}`);
     } finally { chk.close(); }
     fs.renameSync(tmp, P.asarFile);
+    try { fs.mkdirSync(path.dirname(GROUPS_FILE), { recursive: true }); fs.writeFileSync(GROUPS_FILE, JSON.stringify({ orcaVersion: st.orcaVersion, at: Date.now(), applied: built.groupNames.filter((n) => !built.skipped.some((x) => x.startsWith(`${n} (`))), skipped: built.skipped })); } catch { /* önemsiz */ }
     return { status: 'applied', detail: `Orca ${st.orcaVersion}${built.skipped.length ? `; skipped: ${built.skipped.join(' | ')}` : ''}` };
   } catch (e) {
     try { fs.rmSync(`${P.asarFile}.syzer-new`, { force: true }); } catch { /* önemsiz */ }
@@ -282,4 +295,4 @@ function run(sub, flags = {}) {
   return r;
 }
 
-module.exports = { run, patch, status, install, uninstall, restore, PATCH_VERSION };
+module.exports = { run, patch, status, install, uninstall, restore, PATCH_VERSION, markerOf, sourceHash, edits };

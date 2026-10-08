@@ -1,5 +1,7 @@
 # SyzerCLI
 
+**Türkçe** · [English](README.en.md)
+
 > **TR:** OpenRouter ve NVIDIA modelleriyle çalışan, dosya okuyup yazabilen, komut çalıştırabilen terminal yapay zekâ ajanı.
 > **EN:** A terminal AI coding agent for OpenRouter and NVIDIA models: reads and edits files, runs commands, spawns parallel subagents.
 
@@ -30,6 +32,8 @@ syzer                                   # etkileşimli sohbet
 syzer -y "src/ altındaki TODO'ları listele"   # tek seferlik, onay istemeden (betikler için)
 syzer --resume <id>                     # kayıtlı oturuma devam (veya: syzer -c)
 syzer web                               # yerel web arayüzü
+syzer doctor                            # kurulum, key, ağ ve Orca yaması denetimi
+syzer export last --out sohbet.md         # oturumu Markdown olarak kaydet
 ```
 
 Sohbette `/help` tüm komutları gösterir; `/plan` önce salt-okunur plan çıkarır, `/go` ile uygulatırsın.
@@ -42,9 +46,11 @@ Sohbette `/help` tüm komutları gösterir; `/plan` önce salt-okunur plan çık
 irm https://raw.githubusercontent.com/yasinbalcik/SyzerCLI/main/install.ps1 | iex
 ```
 
+**macOS / Linux:** `curl -fsSL https://raw.githubusercontent.com/yasinbalcik/SyzerCLI/main/install.sh | sh`
+
 **Her platform (Node 18+):** `npm install -g github:yasinbalcik/SyzerCLI` → `syzer`
 
-**exe:** [Releases](https://github.com/yasinbalcik/SyzerCLI/releases/latest) sayfasından `syzer.exe` indir; her açılışta kendini günceller.
+**exe:** [Releases](https://github.com/yasinbalcik/SyzerCLI/releases/latest) sayfasından `syzer.exe` indir; her açılışta kendini günceller. Aynı sayfadaki `SHA256SUMS.txt` ile doğrulayabilirsin. Exe imzasız olduğundan Windows SmartScreen ilk açılışta uyarabilir ("Daha fazla bilgi" → "Yine de çalıştır").
 
 **Orca entegrasyonu:** Orca'yı kapat → `syzer orca install --shortcut` → masaüstündeki **Orca (Syzer)** kısayolundan aç. Orca zaten kuruluysa `install.ps1` bunu otomatik yapar.
 

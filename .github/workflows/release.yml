@@ -1,0 +1,28 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm test
+      - name: Check tag matches package.json
+        shell: bash
+        run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
+      - run: npm run build:exe
+      - name: Checksums
+        shell: bash
+        working-directory: dist
+        run: sha256sum syzer.exe syzercli-*.tar.gz > SHA256SUMS.txt
+      - name: Publish
+        shell: bash
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" "dist/syzercli-$V.tar.gz" dist/syzer.exe dist/SHA256SUMS.txt --title "SyzerCLI $V" --generate-notes

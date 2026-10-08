@@ -40,6 +40,8 @@ const HELP = `SyzerCLI v${pkg.version}
   syzer web [--port 8788] [--no-open]  local web UI (chat, keys, usage, settings)
   syzer orca [status|install [--shortcut]|patch|restore|uninstall]  Orca integration (auto-maintained)
   syzer setup                 run the first-time setup wizard again
+  syzer doctor                check install, keys, network and Orca patch
+  syzer export <id|last> [--out f.md]  save a session as Markdown
   syzer update                check GitHub for a newer version (the syzer.exe launcher installs it)
   syzer usage --summary --json  percent used per provider (for status bars / Orca)
   syzer perm [ask|auto|readonly]
@@ -178,6 +180,8 @@ async function main() {
   }
   if (cmd === 'provider') return cmds.providerCmd(cfg, sub);
   if (cmd === 'orca') return require('../src/orca-patch').run(sub, { quiet: f.quiet, dryRun: f.dryRun, shortcut: f.shortcut });
+  if (cmd === 'doctor') return require('../src/doctor').run(cfg);
+  if (cmd === 'export') return require('../src/export').run(sub, f.outFile);
   if (cmd === 'web') return require('../src/web').start(cfg, { port: Number(f.port) || 8788, open: !f.noOpen });
   if (cmd === 'setup') return require('../src/setup').run(cfg);
   if (cmd === 'update') return require('../src/update-cmd').run(cfg);
