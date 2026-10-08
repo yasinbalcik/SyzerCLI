@@ -50,7 +50,9 @@ irm https://raw.githubusercontent.com/yasinbalcik/SyzerCLI/main/install.ps1 | ie
 
 **Her platform (Node 18+):** `npm install -g github:yasinbalcik/SyzerCLI` → `syzer`
 
-**exe:** [Releases](https://github.com/yasinbalcik/SyzerCLI/releases/latest) sayfasından `syzer.exe` indir; her açılışta kendini günceller. Aynı sayfadaki `SHA256SUMS.txt` ile doğrulayabilirsin. Exe imzasız olduğundan Windows SmartScreen ilk açılışta uyarabilir ("Daha fazla bilgi" → "Yine de çalıştır").
+**Kurulum exe'si:** [Releases](https://github.com/yasinbalcik/SyzerCLI/releases/latest) sayfasından `SyzerCLI-Setup.exe` indir ve çalıştır: kendini `%LOCALAPPDATA%ProgramsSyzerCLI` altına kurar, `syzer` komutunu PATH'e ekler, Başlat menüsü kısayolu oluşturur (Node.js gerekmez). Sonra yeni bir terminalde `syzer` yaz.
+
+**exe:** aynı sayfadan tek başına `syzer.exe` de indirebilirsin; her açılışta kendini günceller. Aynı sayfadaki `SHA256SUMS.txt` ile doğrulayabilirsin. Exe imzasız olduğundan Windows SmartScreen ilk açılışta uyarabilir ("Daha fazla bilgi" → "Yine de çalıştır").
 
 **Orca entegrasyonu:** Orca'yı kapat → `syzer orca install --shortcut` → masaüstündeki **Orca (Syzer)** kısayolundan aç. Orca zaten kuruluysa `install.ps1` bunu otomatik yapar.
 

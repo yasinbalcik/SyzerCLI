@@ -15,4 +15,5 @@ const exe = path.join(dist, process.platform === 'win32' ? 'syzer.exe' : 'syzer'
 fs.copyFileSync(process.execPath, exe);
 if (process.platform === 'win32') require('./brand-exe.js')(exe); // görev yöneticisi adı/ikonu; postject'ten önce
 run('npx', ['--yes', 'postject', exe, 'NODE_SEA_BLOB', path.join(dist, 'sea.blob'), '--sentinel-fuse', 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2']);
+if (process.platform === 'win32') fs.copyFileSync(exe, path.join(dist, 'SyzerCLI-Setup.exe')); // aynı exe; adında "setup" olunca kendini kurar
 console.log(`built ${exe}`);

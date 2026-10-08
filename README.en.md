@@ -21,6 +21,7 @@ Requirements: Node.js 18+ (not needed for the exe) and at least one OpenRouter (
 | Windows | `irm https://raw.githubusercontent.com/yasinbalcik/SyzerCLI/main/install.ps1 \| iex` |
 | macOS / Linux | `curl -fsSL https://raw.githubusercontent.com/yasinbalcik/SyzerCLI/main/install.sh \| sh` |
 | Any (Node 18+) | `npm install -g github:yasinbalcik/SyzerCLI` |
+| Windows installer | download and run `SyzerCLI-Setup.exe` from [Releases](https://github.com/yasinbalcik/SyzerCLI/releases/latest): installs to `%LOCALAPPDATA%ProgramsSyzerCLI`, adds `syzer` to your PATH, creates a Start menu shortcut (no Node.js needed). |
 | Windows exe | download `syzer.exe` from [Releases](https://github.com/yasinbalcik/SyzerCLI/releases/latest) (self-updating). Verify it against `SHA256SUMS.txt` in the same release. |
 
 The exe is not code-signed, so Windows SmartScreen may warn on first launch ("More info" → "Run anyway"). If in doubt, install with npm.
