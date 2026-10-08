@@ -390,6 +390,9 @@ async function start(cfg, opts = {}, io = {}) {
     killAll(s);
     if (s.mcp) s.mcp.close();
     editor.stop();
+    const oh = require('./orca-hooks');
+    oh.end();
+    await oh.flush();
   }
 }
 

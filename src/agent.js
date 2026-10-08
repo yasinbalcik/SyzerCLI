@@ -7,6 +7,7 @@ const { spawn } = require('./subagents');
 const { fallbackChain, supportsReasoning } = require('./models');
 const stats = require('./stats');
 const { t } = require('./i18n');
+const hooks = require('./orca-hooks');
 
 const MAX_STEPS = 30;
 
@@ -80,6 +81,8 @@ async function runTurn(session, userContent, signal) {
   const startLen = session.messages.length;
   if (session.canSpawn !== false || !session.agentName) session.cpDone = false; // her tur için yeni git checkpoint hakkı
   session.messages.push({ role: 'user', content: userContent });
+  const top = !session.agentName; // Orca durum olayları yalnızca ana oturum için
+  if (top) hooks.promptSubmitted(typeof userContent === 'string' ? userContent : (userContent.find((p) => p.type === 'text') || {}).text || '');
 
   const totals = { tokens: 0, ms: 0, keyIndex: -1, model: session.model, toolCalls: 0 };
   const t0 = Date.now();
@@ -146,6 +149,7 @@ async function runTurn(session, userContent, signal) {
         } else {
           const tc = calls[k++];
           out.tool(tc.name, label(tc));
+          if (top) hooks.toolStarted(tc.name);
           out.waiting(true, t('running', tc.name));
           let r;
           try { r = await execute(tc, session); } finally { out.waiting(false); }
@@ -156,10 +160,12 @@ async function runTurn(session, userContent, signal) {
     }
   } catch (err) {
     session.messages.length = startLen; // geçersiz yarım geçmiş bırakma
+    if (top) hooks.turnDone('');
     throw err;
   }
 
   totals.ms = Date.now() - t0;
+  if (top) hooks.turnDone(finalText);
   return { content: finalText, ...totals };
 }
 

@@ -361,7 +361,10 @@ async function runTool(name, a, call, session, allowedByRule) {
         let preview = '';
         if (ops) preview = renderDiff(ops, { maxRows: change.existed ? 30 : 15, indent: 2 });
         else if (isMcp) preview = `  ${C.gray(JSON.stringify(a).slice(0, 300))}`;
+        const top = !session.agentName;
+        if (top) require('./orca-hooks').waiting(name);
         const verdict = await session.confirm(name, describe(name, a, cwd), preview);
+        if (top) require('./orca-hooks').resumed();
         if (verdict === 'always') session.perm = 'auto';
         else if (verdict === 'rule') {
           const r = perms.suggestRule(name, a);

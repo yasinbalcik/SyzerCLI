@@ -26,8 +26,29 @@ function save(s) {
       id: s.sessionId, cwd: s.cwd, model: s.model, ts: Date.now(),
       title: first.replace(/^\[PLAN MODE\][^\n]*\n\n/, '').replace(/\s+/g, ' ').slice(0, 70), messages: slim(s.messages),
     }));
+    exportToOrca(s, first);
     const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.json')).sort();
     for (const old of files.slice(0, -MAX)) fs.unlinkSync(path.join(DIR, old));
+  } catch { /* önemsiz */ }
+}
+
+// Orca "Agent Session History" paneli Hermes biçimini okur: ~/.hermes/sessions/session_<id>.json (başlık "[Syzer]" ile ayrışır)
+function exportToOrca(s, first) {
+  if (!process.env.ORCA_PANE_KEY && !process.env.SYZER_ORCA_EXPORT) return; // yalnızca Orca içinde
+  try {
+    const dir = path.join(require('os').homedir(), '.hermes', 'sessions');
+    fs.mkdirSync(dir, { recursive: true });
+    const NL = String.fromCharCode(10);
+    const text = (m) => (typeof m.content === 'string' ? m.content : (m.content || []).filter((p) => p.type === 'text').map((p) => p.text).join(NL));
+    const msgs = s.messages.filter((m) => (m.role === 'user' || m.role === 'assistant') && text(m).trim()).map((m) => ({ role: m.role, content: text(m) }));
+    const fu = msgs.findIndex((m) => m.role === 'user');
+    if (fu >= 0) msgs[fu] = { ...msgs[fu], content: `[Syzer] ${msgs[fu].content}` };
+    const id = s.sessionId; // YYYYMMDDHHMMSS-xxxx (UTC)
+    const startMs = Date.UTC(+id.slice(0, 4), +id.slice(4, 6) - 1, +id.slice(6, 8), +id.slice(8, 10), +id.slice(10, 12), +id.slice(12, 14));
+    const body = { session_id: `syzer-${s.sessionId}`, model: s.model, cwd: s.cwd, session_start: new Date(Number.isFinite(startMs) ? startMs : Date.now()).toISOString(), last_updated: new Date().toISOString(), message_count: msgs.length, messages: msgs };
+    const file = path.join(dir, `session_syzer-${s.sessionId}.json`);
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify(body));
+    fs.renameSync(`${file}.tmp`, file);
   } catch { /* önemsiz */ }
 }
 
