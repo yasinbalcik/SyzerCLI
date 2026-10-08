@@ -11,7 +11,7 @@ const crypto = require('crypto');
 const { execFileSync, spawnSync } = require('child_process');
 const config = require('./config');
 
-const PATCH_VERSION = 10;
+const PATCH_VERSION = 11;
 const HOME = path.join(config.DIR, 'orca');
 const LOG = path.join(HOME, 'patch.log');
 const TASKS = ['SyzerOrcaPatch'];

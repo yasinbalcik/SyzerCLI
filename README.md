@@ -3,13 +3,27 @@
 OpenRouter **ve** NVIDIA için, çoklu API key havuzu, otomatik key/model yedekleme, ajan araçları, subagent'lar, MCP ve
 yerel proxy sunan terminal ajanı. Komut: `syzer` (aynı zamanda `syzercli`).
 
-Kurulum: bu klasörde `npm link` → `syzer`
+## Hızlı kurulum
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/yasinbalcik/SyzerCLI/main/install.ps1 | iex
+```
+
+**Her platform (Node 18+):** `npm install -g github:yasinbalcik/SyzerCLI` → `syzer`
+
+**exe:** [Releases](https://github.com/yasinbalcik/SyzerCLI/releases/latest) sayfasından `syzer.exe` indir; her açılışta kendini günceller.
+
+**Orca entegrasyonu:** Orca'yı kapat → `syzer orca install --shortcut` → masaüstündeki **Orca (Syzer)** kısayolundan aç. Orca zaten kuruluysa `install.ps1` bunu otomatik yapar.
+
+Kaynaktan: depoyu klonla, klasörde `npm link`.
 
 ## Kurulum, exe ve otomatik güncelleme
 
 - İlk açılışta kurulum sihirbazı çalışır (dil, kısa eğitim, sağlayıcı, key'ler, izin modu); yeniden: `syzer setup`.
-- Sürümler özel GitHub reposunda (`yasinbalcik/SyzerCLI`) yayınlanır. `dist/syzer.exe` bir launcher'dır: her açılışta (1 saat önbellekli) son sürümü kontrol eder, varsa indirip `~/.syzercli/app/<sürüm>` altına kurar ve öyle açar. Atlamak: `--no-update` / `SYZER_NO_UPDATE=1`.
-- Repo özel olduğundan token gerekir: `GITHUB_TOKEN`, `~/.syzercli/github-token` veya `gh auth login`.
+- Sürümler GitHub reposunda (`yasinbalcik/SyzerCLI`) yayınlanır. `dist/syzer.exe` bir launcher'dır: her açılışta (1 saat önbellekli) son sürümü kontrol eder, varsa indirip `~/.syzercli/app/<sürüm>` altına kurar ve öyle açar. Atlamak: `--no-update` / `SYZER_NO_UPDATE=1`.
+- Repo herkese açıktır, token gerekmez (özel bir çatal için: `GITHUB_TOKEN`, `~/.syzercli/github-token` veya `gh auth login`).
 - Yeni sürüm yayınlama: `package.json` sürümünü artır → `npm run build:exe` → `gh release create vX.Y.Z dist/syzercli-X.Y.Z.tar.gz dist/syzer.exe`.
 - `syzer usage --summary --json` sağlayıcı başına kalan hak yüzdesini verir (Orca entegrasyonu: `SyzerCLI-Orca`).
 
