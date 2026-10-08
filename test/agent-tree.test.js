@@ -400,3 +400,37 @@ test('panelHeight matches renderPanel; small rows; tiny widths', () => {
   }
   for (const w of [1, 2, 3]) assert.doesNotThrow(() => card(nodeOf({}), { width: w, now: 5000 }));
 });
+
+test('reportLines tty / plain / empty', () => {
+  const { reportLines } = require('../src/agent-tree');
+  const snap = mk(2).snapshot();
+  const tty = reportLines(snap, { isTTY: true, columns: 100 });
+  assert.ok(tty.length > 0);
+  // colour is decided by ui.js at load time (TTY or FORCE_COLOR)
+  if ((process.stdout.isTTY || process.env.FORCE_COLOR) && !process.env.NO_COLOR) assert.ok(tty.some((l) => /\x1b/.test(l)));
+  for (const l of tty) assert.ok(vlen(l) <= 98, 'tty width');
+  const plain = reportLines(snap, { isTTY: false, columns: 100 });
+  assert.ok(plain.length > 0);
+  for (const l of plain) { assert.ok(!/\x1b/.test(l)); assert.ok(vlen(l) <= 80); }
+  assert.deepEqual(reportLines(createStore(() => 1).snapshot(), { isTTY: true, columns: 100 }), []);
+});
+
+test('i18n: tree/report keys exist in en and tr, de falls back', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { t } = require('../src/i18n');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'agent-tree.js'), 'utf8');
+  const keys = [...new Set([...src.matchAll(/\bt\('([a-z_]+)'/g)].map((m) => m[1]))];
+  assert.ok(keys.length >= 15);
+  try {
+    for (const k of keys) {
+      setLang('en'); const en = t(k);
+      setLang('tr'); const tr = t(k);
+      setLang('de'); const de = t(k);
+      assert.ok(en && en !== k, 'en ' + k);
+      assert.ok(tr && tr !== k, 'tr ' + k);
+      assert.notEqual(tr, en, 'tr differs ' + k);
+      if (k !== 'lbl_steps') assert.equal(de, en, 'de fallback ' + k); // lbl_steps has a real de translation
+    }
+  } finally { setLang('en'); }
+});

@@ -229,6 +229,13 @@ function renderReport(snap, { width, now = Date.now(), color = true } = {}) {
   return lines;
 }
 
+function reportLines(snap, { isTTY, columns } = {}) {
+  if (!snap || !snap.nodes || !snap.nodes.length) return [];
+  return isTTY
+    ? renderReport(snap, { width: Math.max(40, (columns || 100) - 2), color: true })
+    : renderReport(snap, { width: 80, color: false });
+}
+
 function renderTree(snap, { width, rows = 24, selected = -1, now = Date.now() } = {}) {
   const lines = [];
   if (!snap.nodes.length) {
@@ -322,5 +329,5 @@ function trackOut(out, store) {
 }
 
 module.exports = {
-  createStore, renderTree, renderCompact, trackOut, card, renderPanel, renderReport, summary, cardRows, panelHeight,
+  createStore, renderTree, renderCompact, trackOut, card, renderPanel, renderReport, reportLines, summary, cardRows, panelHeight,
 };

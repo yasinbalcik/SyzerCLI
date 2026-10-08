@@ -15,7 +15,7 @@ const { undoLast } = require('./tools');
 const providers = require('./providers');
 const { Editor } = require('./input');
 const { Dock } = require('./dock');
-const { createStore, trackOut, renderTree } = require('./agent-tree');
+const { createStore, trackOut, renderTree, reportLines } =require('./agent-tree');
 const { McpManager } = require('./mcp');
 const { killAll } = require('./tools');
 const compactMod = require('./compact');
@@ -284,6 +284,11 @@ async function start(cfg, opts = {}, io = {}) {
     tree.setMain({ model: s.model, effort: s.effort });
     let docked = false;
     const closeDock = () => { if (docked) { docked = false; s.out.setDock(null); dock.end(); } };
+    const printReport = () => {
+      try {
+        reportLines(s.out.getTree(), { isTTY: process.stdout.isTTY, columns: process.stdout.columns || 100 }).forEach((l) => console.log(l));
+      } catch { /* the report must never break a turn */ }
+    };
     try {
       // Bağlam %75'i aşarsa önce otomatik özetle
       const win = await windowOf(s.model);
@@ -294,6 +299,7 @@ async function start(cfg, opts = {}, io = {}) {
       let r;
       try { r = await runTurn(s, content, ctrl.signal); } finally { closeDock(); }
       sessions.save(s);
+      printReport();
       const parts = [];
       const ratio = estimate(s.messages) / win;
       parts.push(ratio > 0.6 ? C.yellow(`ctx ${Math.round(ratio * 100)}%`) : `ctx ${Math.max(1, Math.round(ratio * 100))}%`);
@@ -314,7 +320,7 @@ async function start(cfg, opts = {}, io = {}) {
       closeDock();
       s.out.waiting(false);
       s.out.endText();
-      if (err.name === 'AbortError') console.log(C.gray(t('aborted')) + '\n');
+      if (err.name === 'AbortError') { printReport(); console.log(C.gray(t('aborted')) + '\n'); }
       else console.error(`${C.red('✖')} ${err.message}\n`);
     }
     ctrl = null;
