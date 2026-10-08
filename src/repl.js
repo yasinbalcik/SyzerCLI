@@ -273,7 +273,12 @@ async function start(cfg, opts = {}, io = {}) {
     switch (cmd) {
       case 'help': case '?': { const ls = t('help').split('\n'); const tip = ls.pop(); console.log([...ls, t('help2'), t('help3'), t('help4'), t('help5'), t('help6'), tip].join('\n')); return; }
       case 'exit': case 'quit': return 'exit';
-      case 'clear': resetSession(s); console.log(C.gray(t('cleared'))); return;
+      case 'clear':
+        resetSession(s);
+        if (process.stdout.isTTY) process.stdout.write('[2J[3J[H'); // ekranı ve kaydırma geçmişini temizle
+        console.log(banner(s, await supportsReasoning(s.model, { cacheOnly: true })));
+        console.log(C.gray(t('cleared')));
+        return;
       case 'usage': await cmds.usage(cfg); return;
       case 'keys':
         if (rest[0] === 'add') {

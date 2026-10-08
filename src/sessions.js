@@ -1,5 +1,10 @@
 'use strict';
 
+// Oturum kayıtları (kendi biçimimiz): ~/.syzercli/sessions/<id>.json
+//   parent:    { id, cwd, model, ts, title, messages: [...] }
+//   alt ajanlar: ~/.syzercli/sessions/<id>/subagents/agent-<n>.json = { id, agentType, description, status, messages: [{role, content}] }
+// Orca entegrasyonu (yamalı tarayıcı) bu dosyaları doğrudan okur; başka bir ajanın biçimine bağlı değil.
+// Dosyalar girintili ve sonda yeni satırla yazılır (Orca "View Log" son \n'e kadar olan kısmı gösterir).
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
@@ -16,39 +21,41 @@ function slim(messages) {
     : m));
 }
 
+const NL = String.fromCharCode(10);
+const json = (o) => JSON.stringify(o, null, 2) + NL;
+function writeAtomic(file, text) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, text);
+  fs.renameSync(`${file}.tmp`, file);
+}
+
+// Bir alt ajan / işçi çalışmasını okunabilir bir transkripte çevirir
+function subagentFile(run, n) {
+  const messages = [{ role: 'user', content: String(run.prompt || '') }];
+  for (const st of run.steps || []) {
+    messages.push({ role: 'assistant', content: `${st.tool}(${st.summary || ''})` });
+    if (st.result) messages.push({ role: 'user', content: `${st.ok === false ? '✖' : '⎿'} ${st.result}` });
+  }
+  messages.push({ role: 'assistant', content: String(run.report || '') });
+  const failed = !run.ok && /^(failed|ERROR)/.test(String(run.report || ''));
+  return { id: `agent-${n}`, agentType: run.agent || 'general', description: String(run.label || `agent ${n}`).slice(0, 120), status: failed ? 'failed' : 'completed', secs: run.secs || null, model: run.model || null, messages };
+}
+
 function save(s) {
   const user = s.messages.find((m) => m.role === 'user');
   if (!user) return;
   const first = typeof user.content === 'string' ? user.content : (user.content.find((p) => p.type === 'text') || {}).text || '';
   try {
-    fs.mkdirSync(DIR, { recursive: true });
-    fs.writeFileSync(path.join(DIR, `${s.sessionId}.json`), JSON.stringify({
+    writeAtomic(path.join(DIR, `${s.sessionId}.json`), json({
       id: s.sessionId, cwd: s.cwd, model: s.model, ts: Date.now(),
       title: first.replace(/^\[PLAN MODE\][^\n]*\n\n/, '').replace(/\s+/g, ' ').slice(0, 70), messages: slim(s.messages),
     }));
-    exportToOrca(s, first);
+    (s.runs || []).forEach((run, i) => writeAtomic(path.join(DIR, s.sessionId, 'subagents', `agent-${i + 1}.json`), json(subagentFile(run, i + 1))));
     const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.json')).sort();
-    for (const old of files.slice(0, -MAX)) fs.unlinkSync(path.join(DIR, old));
-  } catch { /* önemsiz */ }
-}
-
-// Orca "Agent Session History" paneli Hermes biçimini okur: ~/.hermes/sessions/session_<id>.json (başlık "[Syzer]" ile ayrışır)
-function exportToOrca(s, first) {
-  if (!process.env.ORCA_PANE_KEY && !process.env.SYZER_ORCA_EXPORT) return; // yalnızca Orca içinde
-  try {
-    const dir = path.join(require('os').homedir(), '.hermes', 'sessions');
-    fs.mkdirSync(dir, { recursive: true });
-    const NL = String.fromCharCode(10);
-    const text = (m) => (typeof m.content === 'string' ? m.content : (m.content || []).filter((p) => p.type === 'text').map((p) => p.text).join(NL));
-    const msgs = s.messages.filter((m) => (m.role === 'user' || m.role === 'assistant') && text(m).trim()).map((m) => ({ role: m.role, content: text(m) }));
-    const fu = msgs.findIndex((m) => m.role === 'user');
-    if (fu >= 0) msgs[fu] = { ...msgs[fu], content: `[Syzer] ${msgs[fu].content}` };
-    const id = s.sessionId; // YYYYMMDDHHMMSS-xxxx (UTC)
-    const startMs = Date.UTC(+id.slice(0, 4), +id.slice(4, 6) - 1, +id.slice(6, 8), +id.slice(8, 10), +id.slice(10, 12), +id.slice(12, 14));
-    const body = { session_id: `syzer-${s.sessionId}`, model: s.model, cwd: s.cwd, session_start: new Date(Number.isFinite(startMs) ? startMs : Date.now()).toISOString(), last_updated: new Date().toISOString(), message_count: msgs.length, messages: msgs };
-    const file = path.join(dir, `session_syzer-${s.sessionId}.json`);
-    fs.writeFileSync(`${file}.tmp`, JSON.stringify(body));
-    fs.renameSync(`${file}.tmp`, file);
+    for (const old of files.slice(0, -MAX)) {
+      fs.unlinkSync(path.join(DIR, old));
+      fs.rmSync(path.join(DIR, old.slice(0, -5)), { recursive: true, force: true });
+    }
   } catch { /* önemsiz */ }
 }
 
@@ -60,13 +67,10 @@ function list(cwd) {
   } catch { return []; }
 }
 
-// Kimliğe göre ara (Orca geçmişinden gelen "syzer-<id>" öneki de kabul edilir); tüm klasörlerde
+// Kimliğe göre ara (Orca geçmişinden gelen "syzer-<id>" öneki de kabul edilir)
 function find(id) {
   const want = String(id).replace(/^syzer-/, '');
-  try {
-    const f = path.join(DIR, `${want}.json`);
-    return JSON.parse(fs.readFileSync(f, 'utf8'));
-  } catch { return null; }
+  try { return JSON.parse(fs.readFileSync(path.join(DIR, `${want}.json`), 'utf8')); } catch { return null; }
 }
 
 module.exports = { newId, save, list, find };

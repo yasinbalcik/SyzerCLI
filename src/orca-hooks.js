@@ -7,7 +7,7 @@ const http = require('http');
 const fs = require('fs');
 
 const TIMEOUT_MS = 800;
-const AGENT_TYPE = 'autohand'; // honoured only after the main/index.js patch (see report)
+const AGENT_TYPE = 'syzer'; // Orca'da kendi ajan kimliği (yama: orca_agent_type işareti)
 const SOURCE = 'hermes';
 let chain = Promise.resolve();
 

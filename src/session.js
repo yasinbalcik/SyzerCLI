@@ -34,6 +34,9 @@ function createSession(cfg, { cwd = process.cwd(), model, perm, effort, useTools
 
 function resetSession(s) {
   s.messages = [{ role: 'system', content: s.ctx.system }];
+  s.sessionId = newId(); // yeni konuşma = yeni kayıt (eski oturum geçmişte kalır)
+  s.runs = [];
+  s.todos = [];
 }
 
 module.exports = { createSession, resetSession };

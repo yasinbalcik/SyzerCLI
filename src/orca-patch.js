@@ -11,14 +11,13 @@ const crypto = require('crypto');
 const { execFileSync, spawnSync } = require('child_process');
 const config = require('./config');
 
-const PATCH_VERSION = 6;
+const PATCH_VERSION = 7;
 const HOME = path.join(config.DIR, 'orca');
 const LOG = path.join(HOME, 'patch.log');
 const TASKS = ['SyzerOrcaPatch'];
 const RUN_KEY = ['HKCU','Software','Microsoft','Windows','CurrentVersion','Run'].join(String.fromCharCode(92));
 
 const ICON = `data:image/png;base64,${(() => { try { return fs.readFileSync(path.join(__dirname, '..', 'assets', 'syzer-icon.png')).toString('base64'); } catch { return ''; } })()}`;
-const icon = (size) => `(0,J.jsx)(\`img\`,{src:\`${ICON}\`,width:${size},height:${size},alt:\`Syzer\`,style:{borderRadius:4}})`;
 
 // Syzer'ı çalıştıracak komut (Orca ana süreci bunu çağırır): exe ise exe, değilse node + syzer.js
 function selfCmd() {
@@ -26,52 +25,8 @@ function selfCmd() {
   return `"${process.execPath}" "${path.join(__dirname, '..', 'bin', 'syzer.js')}"`;
 }
 
-function mainFetch(cmd) {
-  return 'return(async()=>{const cp=process.getBuiltinModule?process.getBuiltinModule(`child_process`):require(`child_process`);' +
-    'const base={provider:`kimi`,weekly:null,updatedAt:Date.now()};' +
-    `return await new Promise(r=>cp.execFile(process.env.SYZER_BIN||${JSON.stringify(cmd)},[\`usage\`,\`--summary\`,\`--json\`],{timeout:20000,shell:true,windowsHide:true,maxBuffer:1<<20},(err,out)=>{` +
-    'if(err)return r({...base,session:null,error:`syzer: `+String(err.message).split(String.fromCharCode(10))[0],status:`error`});' +
-    'try{const j=JSON.parse(out);const ps=(j.providers||[]).filter(p=>p.percent_used!=null);' +
-    'if(!ps.length)return r({...base,session:null,error:`No quota info (${j.keys_ready}/${j.keys_total} keys ready)`,status:`unavailable`});' +
-    'const reset=ps.map(p=>p.resets_at?Date.parse(p.resets_at):null).filter(Boolean).sort()[0]||Date.now()+864e5;' +
-    'const mk=(name,u,badge,detail,ra)=>({name,usedPercent:u,windowMinutes:1440,resetsAt:ra,resetDescription:badge,badge,detail});' +
-    'const left=p=>p.limit!=null?`${Math.max(0,p.limit-(p.used||0))} left`:`quota n/a`;' +
-    'const lim=ps.filter(p=>p.limit!=null);const tl=lim.length?`${lim.reduce((a,p)=>a+Math.max(0,p.limit-(p.used||0)),0)} left`:`quota n/a`;' +
-    'const total=mk(`Total`,Math.round(ps.reduce((a,p)=>a+p.percent_used,0)/ps.length),`${j.keys_ready}/${j.keys_total} keys`,tl,reset);' +
-    'const buckets=[...ps.map(p=>mk(p.name,p.percent_used,`${p.keys_ready}/${p.keys_total} keys`,left(p),p.resets_at?Date.parse(p.resets_at):reset)),total];' +
-    'r({...base,session:total,buckets,error:null,status:`ok`})}' +
-    'catch(e){r({...base,session:null,error:`syzer: bad JSON`,status:`error`})}}))})();';
-}
-
-const SB = /^out\/renderer\/assets\/StatusBar-.*\.js$/;
 const markerOf = (cmd) => `/*syzer-orca:${PATCH_VERSION}:${crypto.createHash('sha1').update(cmd).digest('hex').slice(0, 8)}*/`;
-
-function edits(cmd) {
-  const marker = markerOf(cmd);
-  return [
-    { glob: /^out\/renderer\/assets\/agent-catalog-.*\.js$/, from: 'cmd:`hermes`,faviconDomain:`nousresearch.com`', to: 'cmd:`hermes`,iconUrl:`' + ICON + '`' },
-    { glob: /^out\/renderer\/assets\/ai-vault-types-.*\.js$/, from: 'hermes:`Hermes`', to: 'hermes:`Syzer`' },
-    { glob: /^out\/main\/chunks\/session-scanner-opencode-sqlite-open-.*\.js$/, from: 'e===`hermes`?`hermes`', to: 'e===`hermes`?`syzer`' },
-    { glob: /^out\/renderer\/assets\/ai-vault-session-resume-preparation-.*\.js$/, from: 'e===`hermes`?`hermes`', to: 'e===`hermes`?`syzer`' },
-    { file: 'out/main/index.js', from: 'agentType:`hermes`,toolName:o.toolName', to: 'agentType:i&&i.orca_agent_type===`autohand`?`autohand`:`hermes`,toolName:o.toolName' },
-    { glob: /^out\/renderer\/assets\/agent-catalog-.*\.js$/, from: '{id:`autohand`,label:a(`auto.lib.agent.catalog.1f8a19e9ad`,`Autohand Code`),cmd:`autohand`,faviconDomain:`autohand.ai`,homepageUrl:`https://github.com/autohandai/code-cli`}', to: '{id:`autohand`,label:`Syzer`,cmd:`syzer`,iconUrl:`' + ICON + '`,searchAliases:[`syzercli`,`openrouter`,`nvidia`],homepageUrl:`https://github.com/yasinbalcik/SyzerCLI`}' },
-    { glob: /^out\/renderer\/assets\/store-.*\.js$/, from: 'autohand:{detectCmd:`autohand`,', to: 'autohand:{detectCmd:`syzer`,' },
-    { glob: /^out\/main\/chunks\/tui-agent-config-.*\.js$/, from: 'autohand:{detectCmd:`autohand`,', to: 'autohand:{detectCmd:`syzer`,' },
-    { glob: /^out\/main\/chunks\/tui-agent-display-names-.*\.js$/, from: 'autohand:`Autohand Code`', to: 'autohand:`Syzer`' },
-    // Syzer alt ajanları (SubagentStart/Stop, hermes kaynağı üzerinden) Claude gibi işlenir → kenar çubuğunda çalışan alt ajan listesi
-    { file: 'out/main/index.js', from: 'case`hermes`:f=bse(t,r,i,a,o);break;', to: 'case`hermes`:if(o&&o.orca_agent_type===`autohand`&&(r===`SubagentStart`||r===`SubagentStop`)){let e=foe(t,r,i,a,o);f=e?{...e,agentType:`autohand`}:null;break}f=bse(t,r,i,a,o);break;' },
-    { glob: SB, from: '(0,J.jsx)(`div`,{className:`font-medium ${n}`,children:t}),(0,J.jsx)(`div`,{className:`h-[6px]', to: '(0,J.jsxs)(`div`,{className:`flex justify-between font-medium ${n}`,children:[t,e.badge?(0,J.jsx)(`span`,{className:`font-normal opacity-70`,children:e.badge}):null]}),(0,J.jsx)(`div`,{className:`h-[6px]' },
-    { glob: SB, from: 'd&&(0,J.jsx)(`span`,{children:d})]})]})}function At(', to: 'e.detail&&(0,J.jsx)(`span`,{children:e.detail}),d&&(0,J.jsx)(`span`,{children:d})]})]})}function At(' },
-    { glob: SB, from: 'e===`kimi`?(0,J.jsx)(G,{agent:`kimi`,size:13})', to: `e===\`kimi\`?${icon(13)}` },
-    { glob: SB, from: '(0,J.jsx)(G,{agent:`kimi`,size:14})', to: icon(14) },
-    { file: 'out/main/index.js', from: 'fetchKimiWithResolvedHome(){', to: `fetchKimiWithResolvedHome(){${marker}${mainFetch(cmd)}` },
-    { glob: SB, from: 'e===`kimi`?`Kimi`:', to: 'e===`kimi`?`Syzer`:' },
-    { glob: SB, from: '`Kimi Usage`', to: '`Syzer Usage`' },
-    { glob: SB, from: 'case`kimi`:return`K`', to: 'case`kimi`:return`S`' },
-    { glob: /^out\/renderer\/assets\/status-bar-agent-gating-.*\.js$/, from: '`gemini`,`kimi`,`antigravity`,`grok`,`zcode`]);function D', to: '`gemini`,`antigravity`,`grok`,`zcode`]);function D' },
-    { glob: SB, from: 'e===`zcode`?t.zcodePlanApiKeyConfigured===!0:!1:!1}', to: 'e===`zcode`?t.zcodePlanApiKeyConfigured===!0:e===`kimi`||!1:!1}' },
-  ];
-}
+const edits = (cmd) => require('./orca-edits').edits(cmd, ICON, markerOf(cmd));
 
 // ---------- asar (bağımlılıksız) ----------
 const align4 = (n) => (n + 3) & ~3;
@@ -163,15 +118,27 @@ function buildPatched(dir, srcAsar, unpackedSrc, cmd) {
   try {
     const edited = new Map();
     const read = (f) => edited.get(f) ?? (a.node(f).unpacked ? fs.readFileSync(unpackedSrc(f), 'utf8') : a.read(f).toString('utf8'));
-    for (const ed of edits(cmd)) {
-      let targets = a.files.filter((f) => (ed.file ? f === ed.file : ed.glob.test(f)));
-      if (ed.glob && targets.length > 1) targets = targets.filter((f) => read(f).includes(ed.from));
-      if (targets.length !== 1) throw new Error(`anchor file not found/ambiguous: ${ed.file || ed.glob} (${targets.length})`);
-      const f = targets[0];
-      const cur = read(f);
-      const n = cur.split(ed.from).length - 1;
-      if (n !== 1) throw new Error(`anchor "${ed.from.slice(0, 60)}…" matched ${n}× in ${f}`);
-      edited.set(f, cur.replace(ed.from, () => ed.to));
+    const groups = new Map();
+    for (const ed of edits(cmd)) { if (!groups.has(ed.group)) groups.set(ed.group, []); groups.get(ed.group).push(ed); }
+    const skipped = [];
+    for (const [name, list] of groups) {
+      const snapshot = new Map(edited);
+      try {
+        for (const ed of list) {
+          let targets = a.files.filter((f) => (ed.file ? f === ed.file : ed.glob.test(f)));
+          if (ed.glob && targets.length > 1) targets = targets.filter((f) => read(f).includes(ed.from));
+          if (targets.length !== 1) throw new Error(`anchor file not found/ambiguous: ${ed.file || ed.glob} (${targets.length})`);
+          const f = targets[0];
+          const cur = read(f);
+          const n = cur.split(ed.from).length - 1;
+          if (n !== 1) throw new Error(`anchor "${ed.from.slice(0, 60)}…" matched ${n}× in ${f}`);
+          edited.set(f, cur.replace(ed.from, () => ed.to));
+        }
+      } catch (e) {
+        if (name === 'core') throw e;
+        edited.clear(); for (const [k, v] of snapshot) edited.set(k, v); // grubu geri al: yarım yama bırakma
+        skipped.push(`${name} (${e.message})`);
+      }
     }
     const header = JSON.parse(JSON.stringify(a.header));
     const nodeOf = (p) => p.split('/').reduce((n, k) => n.files[k], header);
@@ -184,7 +151,7 @@ function buildPatched(dir, srcAsar, unpackedSrc, cmd) {
       e.size = buf.length;
       if (e.unpacked) unpacked.push({ f, buf }); else extra.push({ entry: e, buf, f });
     }
-    return { header, data: a.copyData(), extra, unpacked };
+    return { header, data: a.copyData(), extra, unpacked, skipped };
   } finally { a.close(); }
 }
 
@@ -198,17 +165,7 @@ function patch(opts = {}) {
     const st = inspect(dir);
     const want = markerOf(cmd).match(markerRe);
     const applied = st.marker && st.marker.v === Number(want[1]) && st.marker.h === want[2];
-    if (applied && !opts.dryRun) {
-      // unpacked dosyalar da yamalı mı? (yarım kalmış işlem kontrolü)
-      const probe = edits(cmd).filter((e) => e.glob && /main\\\/chunks/.test(String(e.glob)));
-      let ok = true;
-      for (const e of probe) {
-        const dirp = path.join(P.unpacked, 'out', 'main', 'chunks');
-        const hit = fs.existsSync(dirp) ? fs.readdirSync(dirp).find((n) => e.glob.test(`out/main/chunks/${n}`)) : null;
-        if (hit && !fs.readFileSync(path.join(dirp, hit), 'utf8').includes(e.to)) ok = false;
-      }
-      if (ok) return { status: 'up-to-date' };
-    }
+    if (applied && !opts.dryRun) return { status: 'up-to-date' }; // işaret asar'a en son yazılır → unpacked dosyalar da tamamdır
     if (!opts.dryRun && orcaRunning()) return { status: 'running' };
 
     // Kaynak = yamasız orijinal
@@ -238,7 +195,7 @@ function patch(opts = {}) {
     const wasPatched = !!(st.marker || legacy);
 
     const built = buildPatched(dir, srcAsar, unpackedSrc, cmd);
-    if (opts.dryRun) return { status: 'dry-run-ok', detail: `${built.extra.length + built.unpacked.length} files would be patched (Orca ${st.orcaVersion})` };
+    if (opts.dryRun) return { status: 'dry-run-ok', detail: `${built.extra.length + built.unpacked.length} files would be patched (Orca ${st.orcaVersion})${built.skipped.length ? `; skipped: ${built.skipped.join(' | ')}` : ''}` };
 
     // unpacked dosyalar: orijinali .syzer-orig olarak sakla, yamalıyı yaz
     for (const { f, buf } of built.unpacked) {
@@ -253,7 +210,7 @@ function patch(opts = {}) {
       for (const { f, buf } of built.extra) if (!chk.read(f).equals(buf)) throw new Error(`verify failed: ${f}`);
     } finally { chk.close(); }
     fs.renameSync(tmp, P.asarFile);
-    return { status: 'applied', detail: `Orca ${st.orcaVersion}` };
+    return { status: 'applied', detail: `Orca ${st.orcaVersion}${built.skipped.length ? `; skipped: ${built.skipped.join(' | ')}` : ''}` };
   } catch (e) {
     try { fs.rmSync(`${P.asarFile}.syzer-new`, { force: true }); } catch { /* önemsiz */ }
     return { status: /anchor/.test(e.message) ? 'incompatible' : 'error', detail: e.message };
