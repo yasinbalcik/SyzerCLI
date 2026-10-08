@@ -55,7 +55,7 @@ function makeSub(parent, agent, label, id, run) {
       endText() {},
       tool(name, summary) { if (run) run.steps.push({ tool: name, summary: String(summary).slice(0, 300) }); po.agentUpdate && po.agentUpdate(id, `${name}(${trunc(String(summary).replace(/\s+/g, ' '), 48)})`, run ? run.steps.length : undefined, run ? Math.round(run.chars / 4) : undefined); },
       toolResult(ok, text, ui) { if (run && run.steps.length) { const st = run.steps[run.steps.length - 1]; st.ok = ok; st.result = (ui && ui.summary ? ui.summary : String(text)).slice(0, 600); run.chars += String(text || '').length; } },
-      warn(msg) { po.warn(`[${label}] ${msg}`); },
+      warn(msg) { if (run && msg === t('max_iter')) run.stopped = true; po.warn(`[${label}] ${msg}`); },
     },
   };
 }
@@ -100,7 +100,7 @@ async function spawn(parent, call, signal) {
       ui: { summary: `${t('sub_summary', agent.name, r.toolCalls, r.tokens.toLocaleString(), secs)} · ${model}`, body },
     };
   } catch (err) {
-    if (err.name === 'AbortError') throw err;
+    if (err.name === 'AbortError') { run.aborted = true; throw err; }
     run.report = `failed: ${err.message}`;
     return { ok: false, output: `Subagent failed: ${err.message}`, ui: { summary: `${agent.name}: ${err.message}` } };
   } finally {

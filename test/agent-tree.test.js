@@ -243,3 +243,58 @@ test('thinking marker does not hide the label; aborted run logs localized text',
     assert.ok(st2.snapshot().log.some((e) => e.text === 'bitti'));
   } finally { setLang('en'); }
 });
+
+test('finish outcome stopped', () => {
+  const s = mk(3);
+  s.finish(1, { ok: true, outcome: 'stopped' }); s.finish(2, { ok: true }); s.finish(3, { ok: false });
+  const n = s.snapshot().nodes;
+  assert.equal(n[0].status, 'stopped'); assert.equal(n[1].status, 'done'); assert.equal(n[2].status, 'failed');
+});
+
+test('event kind', () => {
+  const s = mk(1);
+  s.event('x', 1, 'warn'); s.event('y', 1);
+  const l = s.snapshot().log;
+  assert.equal(l[0].kind, 'warn'); assert.equal(l[1].kind, 'info');
+});
+
+test('trackOut maps run flags', () => {
+  const st = createStore(); const f = fakeOut(); trackOut(f.o, st);
+  for (let i = 1; i <= 4; i++) f.o.agentStart(i, 'explorer: x');
+  f.o.agentDone(1, { ok: true, stopped: true });
+  f.o.agentDone(2, { ok: false, aborted: true });
+  f.o.agentDone(3, { ok: false, report: 'failed: boom' });
+  f.o.agentDone(4, { ok: true });
+  const sn = st.snapshot();
+  assert.deepEqual(sn.nodes.map((n) => n.status), ['stopped', 'aborted', 'failed', 'done']);
+  assert.ok(sn.log.some((e) => e.id === 1 && e.kind === 'warn' && e.text === 'stopped: step limit reached'));
+  assert.ok(sn.log.some((e) => e.id === 2 && e.text === 'aborted'));
+  assert.ok(sn.log.some((e) => e.id === 3 && e.kind === 'warn'));
+});
+
+test('trackOut warn kind', () => {
+  const st = createStore(); const f = fakeOut(); trackOut(f.o, st);
+  f.o.warn('x');
+  assert.equal(st.snapshot().log[0].kind, 'warn');
+});
+
+test('renderCompact stopped mark', () => {
+  const s = mk(2);
+  s.finish(1, { ok: true, outcome: 'stopped' }); s.finish(2, { ok: false, outcome: 'aborted' });
+  const l = renderCompact(s.snapshot(), { width: 80, now: 1000 }).map(strip);
+  assert.ok(l[1].includes('⚠')); assert.ok(l[2].includes('◌'));
+});
+
+test('subagent run.stopped on max_iter warn', () => {
+  const { makeSub } = require('../src/subagents');
+  const { t } = require('../src/i18n');
+  const warns = [];
+  const parent = { cfg: {}, ctx: { agents: [], header: '', files: [] }, out: { warn: (m) => warns.push(m) }, model: 'm' };
+  const run = { steps: [], chars: 0, live: '' };
+  const sub = makeSub(parent, { name: 'a', tools: [] }, 'a: x', 1, run);
+  sub.out.warn('other');
+  assert.ok(!run.stopped);
+  sub.out.warn(t('max_iter'));
+  assert.equal(run.stopped, true);
+  assert.equal(warns.length, 2);
+});

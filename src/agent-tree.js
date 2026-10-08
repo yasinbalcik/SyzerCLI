@@ -5,7 +5,7 @@ const { C, vlen, charWidth } = require('./ui');
 const { t } = require('./i18n');
 
 const LOG_MAX = 200;
-const MARK = { queued: '…', running: '●', done: '✓', failed: '✖' };
+const MARK = { queued: '…', running: '●', done: '✓', failed: '✖', stopped: '⚠', aborted: '◌' };
 
 // Düz metni görünür genişliğe göre keser (CJK 2 hücre); sığmazsa sonuna … koyar.
 function fit(s, n) {
@@ -54,12 +54,12 @@ function createStore(now = Date.now) {
     finish(id, o = {}) {
       const n = find(id);
       if (!n) return;
-      n.status = o.ok ? 'done' : 'failed';
+      n.status = o.outcome || (o.ok ? 'done' : 'failed');
       if (o.model) n.model = o.model;
       n.t1 = now();
     },
-    event(text, id) {
-      log.push({ t: now(), id, text: String(text) });
+    event(text, id, kind = 'info') {
+      log.push({ t: now(), id, text: String(text), kind });
       if (log.length > LOG_MAX) log = log.slice(log.length - LOG_MAX);
     },
     snapshot() {
@@ -76,6 +76,7 @@ function statusColor(st, s) {
   if (st === 'running') return C.cyan(s);
   if (st === 'done') return C.green(s);
   if (st === 'failed') return C.red(s);
+  if (st === 'stopped') return C.yellow(s);
   return C.gray(s);
 }
 const kindLabel = (n) => (n.orca ? n.kind + ' · Orca' : n.kind);
@@ -206,16 +207,19 @@ function trackOut(out, store) {
   out.agentDone = (id, run) => {
     call('agentDone', [id, run]);
     const ok = !!(run && run.ok);
-    store.finish(id, { ok, model: shortModel(run && run.model) });
-    if (ok) store.event(t('tree_done'), id);
+    const outcome = run && run.aborted ? 'aborted' : run && run.stopped ? 'stopped' : ok ? 'done' : 'failed';
+    store.finish(id, { ok, outcome, model: shortModel(run && run.model) });
+    if (outcome === 'done') store.event(t('tree_done'), id);
+    else if (outcome === 'aborted') store.event(t('tree_aborted'), id);
+    else if (outcome === 'stopped') store.event(t('tree_stopped'), id, 'warn');
     else {
       const first = String((run && run.report) || '').split('\n').filter(Boolean)[0] || '';
-      store.event(t('tree_error') + (first.replace(/^failed:\s*/i, '') || t('tree_aborted')), id);
+      store.event(t('tree_error') + (first.replace(/^failed:\s*/i, '') || t('tree_aborted')), id, 'warn');
     }
   };
   out.warn = (msg) => {
     call('warn', [msg]);
-    store.event(String(msg));
+    store.event(String(msg), undefined, 'warn');
   };
   return out;
 }
