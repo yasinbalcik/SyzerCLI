@@ -121,11 +121,11 @@ function loadBody(file, args = '') {
 // --- Alt ajan tanımları: <dir>/<ad>.md (Claude .claude/agents biçimi) ---
 
 const READ_TOOLS = ['read_file', 'list_dir', 'find_files', 'search_files', 'use_skill', 'web_fetch', 'web_search'];
-const ALL_TOOLS = [...READ_TOOLS, 'write_file', 'edit_file', 'run_command', 'run_background', 'bg_output', 'bg_stop', 'todo_write', 'mcp'];
+const ALL_TOOLS = [...READ_TOOLS, 'write_file', 'edit_file', 'run_command', 'run_background', 'bg_output', 'bg_stop', 'mcp']; // todo_write alt ajanlara verilmez (liste ana oturumda görünür)
 const CLAUDE_TOOL = {
   read: 'read_file', write: 'write_file', edit: 'edit_file', multiedit: 'edit_file',
   bash: 'run_command', grep: 'search_files', glob: 'find_files', ls: 'list_dir',
-  webfetch: 'web_fetch', websearch: 'web_search', todowrite: 'todo_write',
+  webfetch: 'web_fetch', websearch: 'web_search',
 };
 
 const BUILTIN_AGENTS = [
@@ -210,7 +210,8 @@ function buildContext(cwd) {
     `Reply in ${LANGS[getLang()] || 'English'} unless the user writes in another language.`,
     `Use tools to inspect and change files instead of guessing. Read a file before editing it. ` +
       `Prefer edit_file for small changes (several at once via its edits array) and write_file for new files. Keep answers concise. ` +
-      `For tasks with 3 or more steps, keep a visible checklist with todo_write and update it as you progress. ` +
+      `Use todo_write only for substantial work with 3+ genuinely distinct steps (or when asked); never for single-step tasks, questions or chat. ` +
+      `Keep exactly one item in_progress, mark items completed right after finishing them, and do not end your turn with unfinished items. ` +
       `Use web_search/web_fetch when you need current information. Use run_background for servers or long-running commands.`,
   ];
   const header = parts.join('\n');

@@ -49,7 +49,7 @@ const DEFS = [
     url: { type: 'string' }, max_chars: { type: 'integer', description: 'default 12000' },
   }, ['url']),
   fn('web_search', 'Search the web. Returns titles, URLs and snippets.', { query: { type: 'string' } }, ['query']),
-  fn('todo_write', 'Create or update your task list for multi-step work. Send the FULL list each time. Keep exactly one item in_progress.', {
+  fn('todo_write', 'Track a visible checklist ONLY for work with 3+ genuinely distinct steps, or when the user asks for a list. Do not use for single-step tasks, questions or chat. Send the FULL list each time; exactly one item in_progress until all are completed (then the list clears). Mark items completed immediately after finishing them.', {
     todos: {
       type: 'array',
       items: {
@@ -309,12 +309,38 @@ function describe(name, a, cwd) {
   }
 }
 
-function renderTodos(todos) {
-  return todos.map((x) => {
+const TODO_STATUS = ['pending', 'in_progress', 'completed'];
+
+// Katı doğrulama: model neyi düzelteceğini hata mesajından anlar
+function validateTodos(todos) {
+  if (!Array.isArray(todos) || !todos.length) return { error: 'todos must be a non-empty array of {content, status}.' };
+  const list = [];
+  const seen = new Set();
+  for (const [i, x] of todos.entries()) {
+    const content = String((x && x.content) || '').trim();
+    if (!content) return { error: `todos[${i}] has empty content.` };
+    if (!x || !TODO_STATUS.includes(x.status)) return { error: `todos[${i}] has invalid status "${x && x.status}"; use pending, in_progress or completed.` };
+    if (seen.has(content.toLowerCase())) return { error: `todos[${i}] duplicates another item ("${content}").` };
+    seen.add(content.toLowerCase());
+    list.push({ content, status: x.status });
+  }
+  const active = list.filter((x) => x.status === 'in_progress').length;
+  const finished = list.every((x) => x.status === 'completed');
+  if (active > 1) return { error: `${active} items are in_progress; keep exactly one in_progress.` };
+  if (!active && !finished) return { error: 'No item is in_progress; mark the one you are working on as in_progress.' };
+  return { list };
+}
+
+// compact: biten maddeler tek satıra katlanır (her güncellemede ekranı doldurmasın)
+function renderTodos(todos, compact = false) {
+  const line = (x) => {
     if (x.status === 'completed') return `    ${C.green('☑')} ${C.dim(x.content)}`;
     if (x.status === 'in_progress') return `    ${C.cyan('▶')} ${C.bold(x.content)}`;
     return `    ${C.gray('☐')} ${x.content}`;
-  }).join('\n');
+  };
+  const done = todos.filter((x) => x.status === 'completed');
+  if (!compact || done.length < 3 || done.length === todos.length) return todos.map(line).join('\n');
+  return [`    ${C.green('☑')} ${C.dim(`${done.length} completed`)}`, ...todos.filter((x) => x.status !== 'completed').map(line)].join('\n');
 }
 
 // ---------- ana yürütücü ----------
@@ -485,10 +511,19 @@ async function runTool(name, a, call, session, allowedByRule) {
         return { ok: true, output: text, ui: { summary: t('sum_found', text.split('\n').filter((l) => /^\d+\./.test(l)).length) } };
       }
       case 'todo_write': {
-        if (!Array.isArray(a.todos)) return { ok: false, output: 'todos must be an array.' };
-        session.todos = a.todos.map((x) => ({ content: String(x.content || ''), status: ['pending', 'in_progress', 'completed'].includes(x.status) ? x.status : 'pending' }));
-        const done = session.todos.filter((x) => x.status === 'completed').length;
-        return { ok: true, output: 'Todo list updated.', ui: { summary: `${done}/${session.todos.length}`, body: renderTodos(session.todos) } };
+        const v = validateTodos(a.todos);
+        if (v.error) return { ok: false, output: v.error, ui: { summary: v.error } };
+        const list = v.list;
+        const done = list.filter((x) => x.status === 'completed').length;
+        const cur = list.find((x) => x.status === 'in_progress');
+        const next = list.find((x) => x.status === 'pending');
+        if (done === list.length) {
+          session.todos = []; // hepsi bitti: liste temizlenir
+          return { ok: true, output: `All ${done} tasks completed. Todo list cleared.`, ui: { summary: `${done}/${done}`, body: renderTodos(list, true) } };
+        }
+        session.todos = list;
+        const state = cur ? `now: "${cur.content}"` : `next: "${next.content}" (mark it in_progress before starting)`;
+        return { ok: true, output: `Todo list updated: ${done}/${list.length} done, ${state}.`, ui: { summary: `${done}/${list.length}`, body: renderTodos(list, true) } };
       }
       case 'use_skill': {
         const s = (session.skills || []).find((x) => x.name === a.name);
@@ -503,4 +538,4 @@ async function runTool(name, a, call, session, allowedByRule) {
   }
 }
 
-module.exports = { DEFS, SPAWN_DEF, toolDefsFor, execute, describe, MUTATING, undoLast, killAll, renderTodos, rootOf, htmlToText, webSearch, webFetch };
+module.exports = { DEFS, SPAWN_DEF, toolDefsFor, execute, describe, MUTATING, undoLast, killAll, renderTodos, validateTodos, rootOf, htmlToText, webSearch, webFetch };

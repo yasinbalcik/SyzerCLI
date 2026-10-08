@@ -40,13 +40,15 @@ class Scrollback {
     this.enabled = enabled; // alt görünüm açıkken false
     this.restore = restore; // canlıya dönünce imleci/saklı konumu düzelt: (row, col) => void
     this.lines = [];
+    this.regions = []; // tıklanabilir bölgeler: { line (mutlak), hits: [{ id, row, rows, c1, c2 }] }
+    this.trimmed = 0; // baştan atılan satır sayısı: mutlak satır numarası = trimmed + dizin
     this.cur = '';
     this.offset = 0;
     this.cache = new Map();
     this.timer = null;
   }
 
-  clear() { this.lines = []; this.cur = ''; this.offset = 0; this.cache.clear(); }
+  clear() { this.lines = []; this.regions = []; this.trimmed = 0; this.cur = ''; this.offset = 0; this.cache.clear(); }
 
   // Yazılan her parçayı kaydet (orijinal yazma ayrıca terminale gider)
   feed(chunk) {
@@ -62,7 +64,7 @@ class Scrollback {
       this.cur += p;
       if (!last) { this.lines.push(this.cur); this.cur = ''; }
     });
-    if (this.lines.length > MAX_LINES) this.lines.splice(0, this.lines.length - MAX_LINES);
+    if (this.lines.length > MAX_LINES) { const n = this.lines.length - MAX_LINES; this.lines.splice(0, n); this.trimmed += n; }
     if (this.offset > 0) this.later();
   }
 
@@ -112,6 +114,39 @@ class Scrollback {
     if (this.offset > 0) return null;
     const n = win.length;
     return { row: top + Math.max(0, n - 1), col: vlen(win[n - 1] || '') + 1 };
+  }
+
+  // Şu an yazılacak ilk satırın mutlak numarası (sonraki console.log buraya düşer)
+  nextLine() { return this.trimmed + this.lines.length; }
+
+  // Ekran satırı (1 tabanlı) -> o satırın mutlak satır numarası; bölge dışı/boşsa null
+  lineAtRow(y) {
+    const { top, bottom } = this.region();
+    const H = bottom - top + 1;
+    if (H < 2 || y < top || y > bottom) return null;
+    const view = this.offset > 0 ? H - 1 : H;
+    if (y - top >= view) return null;
+    const total = this.allRows();
+    const end = total.length - this.offset;
+    const start = Math.max(0, end - view);
+    const idx = start + (y - top);
+    if (idx >= end) return null;
+    let acc = 0;
+    for (let i = 0; i < this.lines.length; i++) {
+      acc += this.rowsOf(this.lines[i]).length;
+      if (idx < acc) return this.trimmed + i;
+    }
+    return null;
+  }
+
+  // Tıklama (x: sütun, y: ekran satırı) bir kayıtlı bölgedeki karta denk gelirse kart kimliği
+  hitAt(x, y) {
+    const ln = this.lineAtRow(y);
+    if (ln == null) return null;
+    for (const r of this.regions) {
+      for (const h of r.hits) if (ln >= r.line + h.row && ln < r.line + h.row + (h.rows || 1) && x >= (h.c1 || 1) && x <= (h.c2 || 9999)) return h.id;
+    }
+    return null;
   }
 
   scrollBy(rows) {

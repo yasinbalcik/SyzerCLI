@@ -108,6 +108,20 @@ class Dock {
     return true;
   }
 
+  // Ajan paneli işi bitince dock eski yüksekliğinde kalmasın: boşalan satırları temizle, kaydırma bölgesini genişlet
+  shrink() {
+    if (!this.active || this.growing || this.viewing) return;
+    const want = this.need();
+    if (want >= this.h) return;
+    const oldTop = this.rows - this.h + 1;
+    const newTop = this.rows - want + 1;
+    let s = `${ESC}7`;
+    for (let r = oldTop; r < newTop; r++) s += `${ESC}[${r};1H${ESC}[2K`;
+    s += `${ESC}[${this.top};${this.rows - want}r${ESC}8`;
+    this.out.write(s);
+    this.h = want;
+  }
+
   async grow() {
     if (this.growing) return;
     const want = this.need();
@@ -139,7 +153,7 @@ class Dock {
   setAgents(list) {
     this.agents = list;
     if (this.sel > list.length) this.sel = list.length ? list.length : -1;
-    if (this.need() > this.h) this.grow();
+    if (this.need() > this.h) this.grow(); else this.shrink();
   }
   pause(on) { this.paused = on; }
 
@@ -159,7 +173,8 @@ class Dock {
   click(row, col) {
     if (!this.active || this.viewing) return false;
     const h = (this.hits || []).find((x) => row >= x.row && row < x.row + (x.rows || 1) && col >= (x.c1 || 1) && col <= (x.c2 || 9999));
-    const a = h && this.agents.find((x) => x.id === h.id);
+    if (!h) return false;
+    const a = this.agents.find((x) => x.id === h.id) || (this.getRun && this.getRun(h.id) ? { id: h.id } : null); // turda biten ajan da açılır
     if (!a) return false;
     this.openView(a);
     return true;
@@ -236,6 +251,13 @@ class Dock {
     this.drawView();
   }
 
+  // Tur bittikten sonra (dock kapalı) çıktı alanındaki bir ajan kartından görünümü aç; esc/q ile dönülür
+  openFinished(id) {
+    if (this.viewing || !this.getRun || !this.getRun(id)) return;
+    if (!this.active) { this.standalone = true; this.editor.dock = this; }
+    this.openView({ id });
+  }
+
   openTree() {
     if (this.viewing) return;
     this.viewing = { kind: 'tree', scroll: 0, sel: this.agents.length ? 0 : -1 };
@@ -253,6 +275,8 @@ class Dock {
     if (!this.viewing) return;
     clearInterval(this.viewTimer);
     this.viewing = null;
+    const standalone = this.standalone;
+    this.standalone = false;
     const orig = this._origOut;
     this._origOut = null;
     this.out.write = orig;
@@ -265,6 +289,10 @@ class Dock {
     } else orig(`${ESC}[?1049l${ESC}7${ESC}[${this.top};${bottom}r${ESC}8${ESC}[?25l`);
     for (const [fn, chunk, enc] of this._buf) { try { fn(chunk, typeof enc === 'string' ? enc : undefined); } catch { /* önemsiz */ } }
     this._buf = [];
+    if (standalone) this.editor.dock = null;
+    // Tamponlanan çıktı ve eski dock çizimleri ekrana basıldı: her şeyi scrollback/dock durumundan temiz çiz
+    if (this.onViewClosed) { try { this.onViewClosed(); } catch { /* önemsiz */ } return; }
+    if (standalone) { try { this.editor._drawFooter(false); } catch { /* önemsiz */ } }
     this.draw();
   }
 
@@ -349,6 +377,7 @@ class Dock {
 
   draw() {
     if (!this.active || this.growing || this.viewing) return;
+    if (this.need() < this.h) this.shrink(); // ağaç düğümleri/kuyruk azaldıysa (ajan görünümünden dönüş dahil)
     const cols = this.out.columns || 80;
     const top = this.rows - this.h + 1;
     const lines = [];
@@ -416,6 +445,14 @@ class Dock {
     lines.slice(0, this.h).forEach((l, i) => { s += `${ESC}[${top + i};1H${ESC}[2K${l}`; });
     s += `${ESC}8`;
     this.out.write(s);
+  }
+
+  // Terminal boyutu değişti: önbellekteki satır sayısını ve kaydırma bölgesini yenile (çizim çağıran tarafta)
+  relayout() {
+    if (!this.active) return;
+    this.rows = this.out.rows;
+    this.h = Math.min(this.need(), Math.max(this.floor, this.rows - this.top - 1));
+    this.out.write(`${ESC}[${this.top};${Math.max(this.top + 1, this.rows - this.h)}r`);
   }
 
   end() {

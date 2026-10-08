@@ -15,7 +15,7 @@ const { undoLast } = require('./tools');
 const providers = require('./providers');
 const { Editor } = require('./input');
 const { Dock } = require('./dock');
-const { createStore, trackOut, renderTree, reportLines } = require('./agent-tree');
+const { createStore, trackOut, renderTree, reportLines, reportHits } = require('./agent-tree');
 const { McpManager } = require('./mcp');
 const { killAll } = require('./tools');
 const compactMod = require('./compact');
@@ -243,6 +243,7 @@ async function start(cfg, opts = {}, io = {}) {
   }
   const reasoning0 = await supportsReasoning(s.model, { cacheOnly: true }); // açılışta ağ isteği yok
   const rich = !!(process.stdout.isTTY && process.stdin.isTTY && !process.env.NO_COLOR && !process.env.SYZER_NO_FRAME && (process.stdout.rows || 0) >= 16);
+  let onViewClosed = null; // tam ekran düzende: ajan görünümü kapanınca ekranı baştan çizer
   let anim = null;
   let screen = null;
   let actionBusy = false;
@@ -267,7 +268,13 @@ async function start(cfg, opts = {}, io = {}) {
     editor.scroller = sb;
     editor.suggest = (text) => cmdinfo.suggest(text, { builtin: BUILTIN, skills: s.ctx.skills, commands: s.ctx.commands });
     editor.onHeight = (foot) => { header.layout.foot = foot; const r = header.region(process.stdout); process.stdout.write(`\x1b[${r.top};${r.bottom}r`); sb.offset = 0; sb.live(); };
-    sb.onClick = (x, y) => { if (dock.viewing) return; if (dock.active) { dock.click(y, x); return; } editor.click(y, x); };
+    sb.onClick = (x, y) => {
+      if (dock.viewing) return;
+      if (dock.active && dock.click(y, x)) return;
+      const id = sb.hitAt(x, y); // çıktı alanındaki (bitmiş) ajan kartları
+      if (id != null) { dock.openFinished(id); return; }
+      if (!dock.active) editor.click(y, x);
+    };
     sb.onWheel = (n) => editor.wheel(n);
     editor.onAction = async (id) => {
       if (dock.active || actionBusy) return;
@@ -305,11 +312,20 @@ async function start(cfg, opts = {}, io = {}) {
     editor.frame = (cols) => header.makeFrame(s, reasoning0, t, cols);
     anim = header.animate({ view, reasoning: reasoning0, version: pkg.version, editor });
     screen = { view, reasoning: reasoning0, ALT, sb };
-    process.stdout.on('resize', () => {
+    // Boyut değişince (ör. Orca sekmesi gizliyken küçük açılıp sonra büyür) eski kutular ekranda kalmasın: her şeyi baştan çiz
+    // ConPTY/Orca'da 'resize' olayı güvenilir gelmiyor: pencere boyutunu canlı sorgula; değiştiyse Node 'resize' olayını kendisi yayar
+    const onResize = () => {
+      process.stdout.write('\x1b[2J');
       header.reapply(process.stdout, view, reasoning0, pkg.version);
+      const docked = dock.active && !dock.viewing;
+      if (docked) dock.relayout();
       if (sb.offset > 0) sb.draw(); else sb.live();
-      if (editor.mode === 'line' && editor._framed === 'screen') editor._drawFooter(false);
-    });
+      if (docked) dock.draw();
+      else if (editor.mode === 'line' && editor._framed === 'screen') editor._drawFooter(false);
+    };
+    process.stdout.on('resize', onResize);
+    onViewClosed = onResize;
+    setInterval(() => { try { const [c, r] = process.stdout.getWindowSize(); if (c !== process.stdout.columns || r !== process.stdout.rows) process.stdout._refreshSize(); } catch { /* önemsiz */ } }, 250).unref();
   } else console.log(banner(s, reasoning0));
   if (s.mcp) {
     s.mcp.errors.forEach((e) => s.out.warn(t('mcp_fail', e.name, e.message)));
@@ -322,6 +338,7 @@ async function start(cfg, opts = {}, io = {}) {
   let webUi = null;
   editor.onInterrupt = () => { if (ctrl) ctrl.abort(); };
   const dock = new Dock({ editor });
+  dock.onViewClosed = () => { if (onViewClosed) onViewClosed(); };
   if (screen) { dock.onAltExit = () => { process.stdout.write(screen.ALT); header.setup(process.stdout, screen.view, screen.reasoning, pkg.version); sb.offset = 0; sb.live(); }; dock.top = header.HDR_ROWS + 1; dock.floor = header.FOOT_ROWS; dock.reserve = header.FOOT_ROWS; dock.footer = () => header.makeFrame(s, screen.reasoning, t, process.stdout.columns || 80).below[1]; }
   const tree = createStore();
   s.tree = tree;
@@ -355,7 +372,10 @@ async function start(cfg, opts = {}, io = {}) {
       if (reported) return;
       reported = true;
       try {
-        reportLines(s.out.getTree(), { isTTY: process.stdout.isTTY, columns: process.stdout.columns || 100 }).forEach((l) => console.log(l));
+        const snap = s.out.getTree();
+        const cols = process.stdout.columns || 100;
+        if (sb) sb.regions.push({ line: sb.nextLine(), hits: reportHits(snap, { width: Math.max(40, cols - 2) }) }); // kartlara tıklayınca ajan görünümü açılsın
+        reportLines(snap, { isTTY: process.stdout.isTTY, columns: cols }).forEach((l) => console.log(l));
       } catch { /* the report must never break a turn */ }
     };
     try {

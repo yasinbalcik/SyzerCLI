@@ -365,3 +365,56 @@ test('need uses getTreeCount without a full snapshot', () => {
   assert.strictEqual(p.d.need(), 4 + panelHeight(7, 30));
   assert.strictEqual(snaps, 0);
 });
+
+test('dock.relayout: boyut değişince satır sayısı ve kaydırma bölgesi yenilenir, kutu yeni alt satıra çizilir', () => {
+  const { d, get } = mk(() => ({ main: {}, log: [], nodes: [] }));
+  d.out.rows = 40; // terminal büyüdü
+  d.relayout();
+  assert.strictEqual(d.rows, 40);
+  assert.ok(get().includes("[" + d.top + ";" + (40 - d.h) + "r"));
+  const before = get().length;
+  d.draw();
+  const drawn = get().slice(before);
+  assert.ok(drawn.includes("[" + (40 - d.h + 1) + ";1H")); // ilk dock satırı yeni tabanda
+  assert.doesNotMatch(drawn, /\x1b\[2[0-4];1H/); // eski (24 satırlık) konuma yazmaz
+});
+
+test('dock.click: turda biten (agents listesinden çıkmış) ajanın kartı da görünümü açar', () => {
+  const { d } = mk(() => ({ main: {}, log: [], nodes: [] }));
+  d.agents = [];
+  d.hits = [{ id: 5, row: 10, rows: 6, c1: 1, c2: 40 }];
+  d.getRun = (id) => (id === 5 ? { id: 5, agent: 'explore', steps: [], report: 'r' } : null);
+  let opened = null;
+  d.openView = (a) => { opened = a; };
+  assert.strictEqual(d.click(12, 5), true);
+  assert.deepStrictEqual(opened, { id: 5 });
+  d.getRun = () => null; opened = null;
+  assert.strictEqual(d.click(12, 5), false); // kaydı olmayan kart açılmaz
+});
+
+test('dock.closeView: onViewClosed varsa tam yeniden çizim çağrılır', () => {
+  const { d } = mk(() => ({ main: {}, log: [], nodes: [] }));
+  d.viewing = { kind: 'agent', id: 1, scroll: 0 };
+  d._origOut = (s) => s; d._origErr = process.stderr.write; d._buf = [];
+  let n = 0; d.onViewClosed = () => { n++; };
+  d.closeView();
+  assert.strictEqual(n, 1);
+  assert.strictEqual(d.viewing, null);
+});
+
+test('dock.shrink: ajanlar bitince dock floor yüksekliğine iner, boşalan satırlar temizlenir, bölge genişler', () => {
+  const { d, get } = mk(() => ({ main: {}, log: [], nodes: [] }));
+  d.floor = 5; d.top = 7;
+  d.agents = [1, 2, 3].map((n) => ({ id: n, no: n, kind: 'explore', label: 'x', t0: Date.now(), steps: 0, tokens: 0 }));
+  d.h = d.need();
+  assert.ok(d.h > 5);
+  const oldH = d.h;
+  d.setAgents([]);
+  assert.strictEqual(d.h, 5);
+  const out = get();
+  assert.ok(out.includes(`\x1b[${7};${24 - 5}r`)); // yeni kaydırma bölgesi
+  assert.ok(out.includes(`\x1b[${24 - oldH + 1};1H\x1b[2K`)); // eski dock'un ilk satırı temizlendi
+  const before = out.length;
+  d.draw();
+  assert.ok(get().slice(before).includes(`\x1b[${24 - 5 + 1};1H`)); // dock yeni tabandan çizilir
+});

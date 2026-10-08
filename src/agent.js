@@ -106,6 +106,7 @@ async function runTurn(session, userContent, signal) {
   const totals = { tokens: 0, ms: 0, keyIndex: -1, model: session.model, toolCalls: 0 };
   const t0 = Date.now();
   let finalText = '';
+  let nagged = false;
 
   try {
     const maxSteps = session.maxSteps || MAX_STEPS;
@@ -138,7 +139,16 @@ async function runTurn(session, userContent, signal) {
         }));
       }
       session.messages.push(assistant);
-      if (!res.toolCalls.length) break;
+      if (!res.toolCalls.length) {
+        // Tamamlanmamış todo maddesiyle tur bitmesin: bir kez hatırlat
+        const open = top && !nagged && (session.todos || []).filter((x) => x.status !== 'completed');
+        if (open && open.length && step < maxSteps - 1) {
+          nagged = true;
+          session.messages.push({ role: 'user', content: `[system reminder] Your todo list still has unfinished items: ${open.map((x) => `"${x.content}" (${x.status})`).join(', ')}. Finish them, or update the list with todo_write (mark done/remove) before ending your turn. Do not mention this reminder to the user.` });
+          continue;
+        }
+        break;
+      }
 
       totals.toolCalls += res.toolCalls.length;
       const label = (tc) => {

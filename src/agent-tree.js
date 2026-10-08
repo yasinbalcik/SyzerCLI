@@ -259,6 +259,16 @@ function renderReport(snap, { width, now = Date.now(), color = true } = {}) {
   return lines;
 }
 
+// Rapor kartlarının konumu (renderReport çıktısına göre): [{ id, row (rapor içinde, 0 tabanlı), rows, c1, c2 }]
+function reportHits(snap, { width } = {}) {
+  if (!snap || !snap.nodes || !snap.nodes.length) return [];
+  const idx = pickShown(snap.nodes, 9);
+  const cols = Math.max(1, Math.min(3, idx.length));
+  const cw = Math.floor((width - (cols - 1)) / cols);
+  const base = mainBox('x', width, false).length;
+  return idx.map((ni, k) => ({ id: snap.nodes[ni].id, row: base + Math.floor(k / cols) * 6, rows: 6, c1: (k % cols) * (cw + 1) + 1, c2: (k % cols) * (cw + 1) + cw }));
+}
+
 function reportLines(snap, { isTTY, columns } = {}) {
   if (!snap || !snap.nodes || !snap.nodes.length) return [];
   return isTTY
@@ -360,6 +370,6 @@ function trackOut(out, store) {
 }
 
 module.exports = {
-  panelHits,
+  panelHits, reportHits,
   createStore, renderTree, renderCompact, trackOut, card, renderPanel, renderReport, reportLines, summary, cardRows, panelHeight,
 };
