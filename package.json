@@ -1,6 +1,6 @@
 {
   "name": "syzercli",
-  "version": "3.18.0",
+  "version": "3.19.0",
   "description": "SyzerCLI — OpenRouter ve NVIDIA için çoklu API key havuzlu terminal ajanı",
   "bin": {
     "syzer": "bin/syzer.js",
@@ -13,7 +13,7 @@
   },
   "license": "MIT",
   "scripts": {
-    "test": "node --test test/core.test.js test/orca-patch.test.js",
+    "test": "node --test test/core.test.js test/bridge.test.js",
     "pack": "node scripts/pack.js",
     "build:exe": "node scripts/build-exe.js"
   },

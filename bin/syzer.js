@@ -179,7 +179,7 @@ async function main() {
     }
   }
   if (cmd === 'provider') return cmds.providerCmd(cfg, sub);
-  if (cmd === 'orca') return require('../src/orca-patch').run(sub, { quiet: f.quiet, dryRun: f.dryRun, shortcut: f.shortcut, arg: more.join(',') });
+  if (cmd === 'orca') return require('../src/orca-bridge').run(process.argv.slice(process.argv.indexOf('orca') + 1)); // eklenti: github.com/yasinbalcik/SyzerCLI-Orca
   if (cmd === 'doctor') return require('../src/doctor').run(cfg);
   if (cmd === 'export') return require('../src/export').run(sub, f.outFile);
   if (cmd === 'web') return require('../src/web').start(cfg, { port: Number(f.port) || 8788, open: !f.noOpen });

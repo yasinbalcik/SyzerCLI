@@ -66,15 +66,15 @@ Kaynaktan: depoyu klonla, klasörde `npm link`.
 
 ## Orca entegrasyonu (Windows)
 
-`syzer orca install [--shortcut]` — bir kez çalıştır, gerisi otomatik. **Syzer, Orca'da başka hiçbir ajana bağlı olmayan kendi ajan kimliğiyle (`syzer`) yer alır:**
-- "Yeni terminal" ajan menüsünde Syzer (S logosu), çalışırken kenar çubuğunda durum ve çalışan alt ajan listesi.
-- Oturum geçmişi paneli: Syzer oturumları doğrudan `~/.syzercli/sessions` içinden okunur (başka biçime çevrilmez); oturum kartında **SUBAGENTS (N)** listesi (başlık, tür, mesaj sayısı, durum, View Log); Resume = `syzer --resume <id>`.
-- Usage panelinde/durum çubuğunda Syzer: Orca'ya eklenen **gerçek bir `syzer` kullanım sağlayıcısı** (sağlayıcı başına yüzde, key sayısı, kalan hak); başka bir sağlayıcının yuvasını kullanmaz.
-- Durum olayları Syzer'ın **kendi hook yolundan** (`POST /hook/syzer`, kendi olay ayrıştırıcısı) gider; hiçbir başka ajana bağlı değil.
-- Orca'yı kapatıp açınca Syzer sekmesi geri gelir (kaydırma geçmişi + `syzer --resume <id>`): hook olayları `session_id` taşır, Orca'nın kurtarma listelerine `syzer` eklenmiştir.
-- Ayarlar → AI Provider Accounts'ta **Syzer key yöneticisi** (listele, aktif seç, sil, çoklu key ekle); Ayarlar → Stats & Usage'da **Syzer** filtresi.
-- **Kapanışta kabukları kapatır:** Orca terminalleri kapanırken kasıtlı olarak arka plandaki bir daemon'da yaşatır; bu yüzden Orca'yı kapatınca `pwsh`/`claude` süreçleri birikebilir. Eklenti, Orca normal yoldan kapanırken (pencerenin **X** düğmesi veya sistem tepsisi → **Quit**) açık tüm terminal oturumlarını kapatır. Görev yöneticisinden "Görevi sonlandır" ile kapatırsan hiçbir yama çalışamaz, süreçler kalır. Kapatmak için: `syzer orca config killShellsOnQuit off` (açmak: `on`). Ne yaptığı `~/.syzercli/orca/quit.log` dosyasına yazılır.
-- Yama Orca'nın `app.asar` dosyasına uygulanır; yedek `app.asar.syzer-orig`. `syzer orca restore` geri alır, `syzer orca uninstall` otomatik bakımı kaldırır. Orca güncellenip yama silinirse zamanlanmış görev (10 dk'da bir + oturum açılışında) Orca **kapalıyken** yeniden uygular. Yama gruplara ayrılmıştır; Orca değişirse uyumsuz grup atlanır (yarım yama bırakılmaz), diğerleri uygulanır. Durum: `syzer orca status`, günlük: `~/.syzercli/orca/patch.log`.
+Orca eklentisi **ayrı bir projedir**: [SyzerCLI-Orca](https://github.com/yasinbalcik/SyzerCLI-Orca) (kendi sürümleri, testleri ve belgeleri orada). CLI'daki `syzer orca` komutu eklentiyi o repodaki son sürümden indirir ve çalıştırır; ayrıca bir şey kurman gerekmez.
+
+```
+syzer orca install --shortcut   # Orca kapalıyken bir kez: eklentiyi indirir, kurar, masaüstü kısayolu oluşturur
+syzer orca status | patch | restore | uninstall | skip | config | update
+```
+
+Eklenti Orca'da Syzer'ı birinci sınıf bir ajan yapar: ajan menüsü, canlı durum ve alt ajan listesi, oturum geçmişi (Resume), kullanım göstergesi, key yöneticisi, yeniden açılışta sekme geri yükleme ve Orca kapanırken açık terminallerin kapatılması. Ayrıntılar, komut tablosu ve sınırlamalar için eklenti reposunun README'sine bak. CLI tarafında kalan parçalar: Orca'ya durum bildiren hook'lar, `spawn_syzer` işçileri, `usage --summary --json` ve `key --json`.
+
 
 ## Giriş her zaman açık
 

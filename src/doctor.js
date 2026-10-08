@@ -32,11 +32,13 @@ async function run(cfg) {
 
   if (process.platform === 'win32') {
     try {
-      const o = require('./orca-patch').status();
-      if (!o.found) add('warn', 'Orca', 'bulunamadı (isteğe bağlı)');
-      else if (o.error) add('fail', 'Orca yaması', o.error);
+      const bridge = require('./orca-bridge');
+      const o = bridge.status();
+      if (!o) add('warn', 'Orca eklentisi', 'kurulu değil ("syzer orca install --shortcut"), isteğe bağlı');
+      else if (o.error) add('fail', 'Orca eklentisi', o.error);
+      else if (!o.found) add('warn', 'Orca', 'bulunamadı (isteğe bağlı)');
       else {
-        add(o.upToDate ? 'ok' : 'warn', 'Orca yaması', `Orca ${o.orcaVersion}: ${o.patched ? (o.upToDate ? 'güncel' : 'eski sürüm, Orca kapalıyken "syzer orca patch" ya da masaüstü kısayolu') : 'uygulanmamış ("syzer orca install --shortcut")'}`);
+        add(o.upToDate ? 'ok' : 'warn', 'Orca yaması', `Orca ${o.orcaVersion}, eklenti v${bridge.installedVersion()}: ${o.patched ? (o.upToDate ? 'güncel' : 'eski sürüm, Orca kapalıyken "syzer orca patch" ya da masaüstü kısayolu') : 'uygulanmamış ("syzer orca install --shortcut")'}`);
         if (o.skippedGroups && o.skippedGroups.length) add('warn', 'Orca atlanan gruplar', o.skippedGroups.join(' | '));
       }
     } catch (e) { add('warn', 'Orca', e.message); }

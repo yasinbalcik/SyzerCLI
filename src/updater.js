@@ -71,4 +71,4 @@ async function install(info) {
   for (const d of fs.readdirSync(APP_DIR)) if (d !== info.version && /^\d/.test(d)) fs.rmSync(path.join(APP_DIR, d), { recursive: true, force: true });
 }
 
-module.exports = { REPO, HOME, APP_DIR, latest, install, installed, cmpVer, token };
+module.exports = { REPO, HOME, APP_DIR, latest, install, installed, cmpVer, token, gh };

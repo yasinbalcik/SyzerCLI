@@ -56,15 +56,15 @@ Project instructions are read from `SYZER.md` (also `CLAUDE.md` / `AGENTS.md`); 
 
 ## Orca integration (Windows)
 
-Makes Syzer a first-class agent inside [Orca](https://github.com/stablyai/orca): agent-menu entry, live status and subagent list, session history with Resume, usage in the status bar, a key manager in Settings, and **tab restore after restarting Orca**.
+The Orca plugin is a **separate project**: [SyzerCLI-Orca](https://github.com/yasinbalcik/SyzerCLI-Orca) (its own releases, tests and docs live there). `syzer orca` downloads the latest plugin release from that repo and runs it, so there is nothing else to install.
 
-1. Close Orca completely.
-2. `syzer orca install --shortcut`
-3. Start Orca from the new **Orca (Syzer)** desktop shortcut; it re-checks the patch on every launch.
+```
+syzer orca install --shortcut   # with Orca closed, once: downloads and installs the plugin, creates a desktop shortcut
+syzer orca status | patch | restore | uninstall | skip | config | update
+```
 
-**Closing Orca also closes its shells.** Orca deliberately keeps terminals alive in a background daemon, so `pwsh`/`claude` processes pile up after you quit. The patch closes every open terminal session when Orca quits normally (window **X** or tray icon → **Quit**). It cannot help if Orca is force-killed from Task Manager. Turn it off with `syzer orca config killShellsOnQuit off`; what it did is logged to `~/.syzercli/orca/quit.log`.
+The plugin makes Syzer a first-class agent in Orca: agent menu, live status and subagent list, session history (Resume), usage in the status bar, a key manager, tab restore after restarting Orca, and closing open terminals when Orca quits. See the plugin README for details, the command table and limitations. What stays in the CLI: the hooks that report status to Orca, `spawn_syzer` workers, `usage --summary --json` and `key --json`.
 
-`syzer orca status` shows whether the patch is current and which patch groups were skipped (a group is skipped, never half-applied, if a new Orca version changes the code it targets). `syzer orca restore` goes back to stock Orca. This is a community patch, unaffiliated with the Orca team; tested on Orca 1.4.x.
 
 ## More
 
