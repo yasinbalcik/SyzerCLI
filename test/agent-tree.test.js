@@ -434,3 +434,26 @@ test('i18n: tree/report keys exist in en and tr, de falls back', () => {
     }
   } finally { setLang('en'); }
 });
+
+test('trackOut agentModel sets node model from the start; card shows it', () => {
+  const { card } = require('../src/agent-tree');
+  const st = createStore(); const { o } = fakeOut(); trackOut(o, st);
+  o.agentStart(1, 'explorer: x'); o.agentRun(1);
+  o.agentModel(1, 'org/some-model:free');
+  const n = snapOf(st).nodes[0];
+  assert.equal(n.model, 'some-model');
+  assert.ok(card(n, { width: 30, color: false })[2].includes('some-model'));
+  o.agentModel(1, '');
+  assert.equal(snapOf(st).nodes[0].model, 'some-model');
+});
+
+test('spawn calls agentModel with sub.model', async () => {
+  const { spawn } = require('../src/subagents');
+  const seen = [];
+  const ac = new AbortController(); ac.abort();
+  const po = { agentStart() {}, agentRun() {}, agentDone() {}, warn() {}, agentModel: (id, m) => seen.push([id, m]) };
+  const parent = { cfg: { subagentModel: 'org/sub-m' }, model: 'org/main', cwd: process.cwd(), ctx: { files: [], agents: [{ name: 'general', tools: [] }] }, out: po };
+  await spawn(parent, { arguments: JSON.stringify({ prompt: 'hi' }) }, ac.signal).catch(() => {});
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0][1], 'org/sub-m');
+});

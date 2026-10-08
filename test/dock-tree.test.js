@@ -213,24 +213,18 @@ test('draw panel fills exactly this.h lines and cuts nothing', () => {
 });
 
 test('draw panel highlights the selected card edge only', () => {
+  const orange = '[38;5;208m';
+  // son kart satırındaki her kartın kenar rengi: '╭' öncesindeki renk koduna bakar
+  const edges = (buf) => {
+    const row = buf.split('[2K').filter((l) => /╭/.test(strip(l))).pop();
+    return row.split('╭').slice(0, -1).map((x) => x.endsWith(orange));
+  };
   const p = mkPanel(3, 30);
   p.d.sel = 2;
   p.d.draw();
-  const orange = '\x1b[38;5;208m';
-  const hasOrange = (s) => s.includes(orange);
-  const topLine = p.get().split('\x1b[2K').find((l) => (l.match(/╭/g) || []).length >= 3 && /kind1/.test(strip(l)) === false) || '';
-  const lineWith = p.get().split('\x1b[2K').filter((l) => /╭/.test(strip(l)));
-  assert.ok(lineWith.length >= 2);
-  const row = lineWith[lineWith.length - 1];
-  const segs = row.split('╭').slice(1);
-  assert.strictEqual(segs.length, 3);
-  const edgeColors = row.split(/(?=\x1b\[[0-9;]*m╭)/).filter((x) => x.includes('╭')).map((x) => hasOrange(x.slice(0, x.indexOf('╭') + 1)));
-  assert.deepStrictEqual(edgeColors.slice(-3), [false, true, false]);
-  void topLine;
+  assert.deepStrictEqual(edges(p.get()), [false, true, false]);
   const q = mkPanel(3, 30); q.d.sel = 0; q.d.draw();
-  const rowQ = q.get().split('\x1b[2K').filter((l) => /╭/.test(strip(l))).pop();
-  const colsQ = rowQ.split(/(?=\x1b\[[0-9;]*m╭)/).filter((x) => x.includes('╭')).map((x) => hasOrange(x.slice(0, x.indexOf('╭') + 1)));
-  assert.deepStrictEqual(colsQ.slice(-3), [false, false, false]);
+  assert.deepStrictEqual(edges(q.get()), [false, false, false]);
 });
 
 test('panel mode falls back when getTree throws or an agent has no node', () => {
@@ -243,4 +237,89 @@ test('panel mode falls back when getTree throws or an agent has no node', () => 
   q.d.getTree = () => ({ main: {}, log: [], nodes: [node(1, 'kind1', 'a')] });
   q.d.draw();
   assert.doesNotMatch(q.get(), /╭/);
+});
+
+// ---- fix wave: finished cards stay, flip via setAgents, status label ----
+const stNode = (id, status) => ({ id, kind: 'kind' + id, label: 'lab' + id, status, steps: 1, tokens: 0, t0: Date.now(), t1: status === 'running' ? 0 : Date.now(), model: '' });
+function mkMixed(rows = 30) {
+  const nodes = [stNode(1, 'done'), stNode(2, 'stopped'), stNode(3, 'running')];
+  const r = mk(() => ({ main: { model: 'mainmodel', effort: 'e' }, log: [], nodes }));
+  r.d.out.rows = rows; r.d.out.columns = 100; r.d.rows = rows;
+  r.d.agents = [{ id: 3, no: 3, kind: 'kind3', label: 'l', t0: Date.now(), steps: 0, tokens: 0 }];
+  r.d.h = r.d.need();
+  return r;
+}
+
+test('panel keeps finished cards: 3 cards, 1 running, 2 done header', () => {
+  const p = mkMixed();
+  assert.strictEqual(p.d.need(), 4 + panelHeight(3, 30));
+  p.d.draw();
+  const txt = strip(p.get());
+  assert.strictEqual((txt.match(/╭/g) || []).length, 4); // main box + 3 cards
+  assert.match(txt, /1 running/);
+  assert.match(txt, /1 done/);
+  assert.match(txt, /✓ kind1/);
+  assert.match(txt, /⚠ kind2/);
+});
+
+test('panel selected card follows sel among all nodes', () => {
+  const p = mkMixed();
+  p.d.sel = 1;
+  p.d.draw();
+  const orange = '\x1b[38;5;208m';
+  const row = p.get().split('\x1b[2K').filter((l) => /╭/.test(strip(l))).pop();
+  const parts = row.split('╭').slice(1);
+  assert.strictEqual(parts.length, 3);
+  const before = row.split('╭');
+  assert.ok(before[2].endsWith(orange)); // third card edge is orange
+  assert.ok(!before[0].endsWith(orange) && !before[1].endsWith(orange));
+});
+
+test('panel falls back when a dock agent has no store node (finished nodes present)', () => {
+  const p = mkMixed();
+  p.d.agents.push({ id: 99, no: 9, kind: 'ghost', label: 'l', t0: Date.now(), steps: 0, tokens: 0 });
+  p.d.draw();
+  assert.doesNotMatch(p.get(), /╭/);
+});
+
+test('need falls back to agents.length when getTree throws', () => {
+  const p = mkMixed();
+  p.d.getTree = () => { throw new Error('x'); };
+  assert.strictEqual(p.d.need(), 4 + panelHeight(1, 30));
+  assert.doesNotThrow(() => p.d.draw());
+});
+
+test('setAgents flip: 0 agents -> panel grows to need() and draw fills h lines', async () => {
+  const nodes = [node(1, 'kind1', 'a'), node(2, 'kind2', 'b'), node(3, 'kind3', 'c')];
+  const r = mk(() => ({ main: { model: 'mainmodel', effort: 'e' }, log: [], nodes }));
+  const d = r.d;
+  d.out.rows = 30; d.out.columns = 100; d.rows = 30;
+  d.agents = []; d.h = d.need();
+  assert.strictEqual(d.h, 4);
+  d.cursorPos = async () => ({ row: 5, col: 1 });
+  d.editor.mode = 'line';
+  d.setAgents(nodes.map((x) => ({ id: x.id, no: x.id, kind: x.kind, label: 'l', t0: Date.now(), steps: 0, tokens: 0 })));
+  await new Promise((res) => setTimeout(res, 20));
+  assert.strictEqual(d.h, 4 + panelHeight(3, 30));
+  assert.strictEqual(d.h, d.need());
+  const mark = r.get().length;
+  d.draw();
+  const fresh = r.get().slice(mark);
+  assert.strictEqual(fresh.split('\x1b[2K').length - 1, d.h);
+  const txt = strip(fresh);
+  assert.strictEqual((txt.match(/╭/g) || []).length, (txt.match(/╰/g) || []).length);
+  assert.strictEqual((txt.match(/╭/g) || []).length, 4);
+});
+
+test('setStatusLabel keeps the elapsed start', () => {
+  const { d } = mk(() => ({ main: {}, log: [], nodes: [] }));
+  d.setStatus('a');
+  const start = d.status.start - 5000;
+  d.status.start = start;
+  d.setStatusLabel('b');
+  assert.strictEqual(d.status.label, 'b');
+  assert.strictEqual(d.status.start, start);
+  d.setStatus(null);
+  d.setStatusLabel('c');
+  assert.strictEqual(d.status, null); // no status running -> not resurrected
 });

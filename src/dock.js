@@ -5,7 +5,7 @@
 // Normal çıktı kaydırma bölgesinde (üstte) akmaya devam eder; kullanıcı yeni mesajı yazıp sıraya koyabilir.
 // Alt ajan listesi: giriş boşken ↓ / ← ile listeye geç, ↑↓ ile seç, Enter ile ajanın CANLI içeriğini aç (tam ekran), Esc/← ile dön.
 const { C, vlen, trunc } = require('./ui');
-const { renderCompact, renderTree, renderPanel, panelHeight } =require('./agent-tree');
+const { renderCompact, renderTree, renderPanel, panelHeight } = require('./agent-tree');
 const { t } = require('./i18n');
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -55,9 +55,15 @@ class Dock {
 
   panelMode() { return this.agents.length > 0 && this.out.rows >= 28 && this.out.columns >= 70; }
 
+  totalNodes() {
+    try { const s = this.getTree && this.getTree(); if (s && Array.isArray(s.nodes)) return s.nodes.length; } catch { /* önemsiz */ }
+    return this.agents.length;
+  }
+
   need() {
     const base = 4 + (this.queue.length ? 1 : 0);
-    if (this.panelMode()) return base + panelHeight(this.agents.length, this.out.rows);
+    // Bitmiş kartlar da panelde kalır: mağazadaki düğüm sayısı ile çalışan ajan sayısından büyüğü ayrılır (yeni düğüm henüz depoda olmayabilir)
+    if (this.panelMode()) return base + panelHeight(Math.max(this.agents.length, this.totalNodes()), this.out.rows);
     return base + (this.agents.length ? 1 + Math.min(this.agents.length, 6) + 1 : 0);
   }
 
@@ -116,6 +122,7 @@ class Dock {
   }
 
   setStatus(label) { this.status = label ? { label, start: this.status && this.status.label === label ? this.status.start : Date.now() } : null; if (!label) { this.detail = ''; this.meta = ''; } }
+  setStatusLabel(label) { if (this.status && label) this.status.label = label; }
   setDetail(d) { this.detail = d; }
   setMeta(m) { this.meta = m; }
   setAgents(list) {
@@ -346,7 +353,8 @@ class Dock {
           const nodes = this.agents.map((a) => snap.nodes.find((n) => n.id === a.id && (n.status === 'queued' || n.status === 'running')));
           if (nodes.every(Boolean) && this.panelMode()) {
             try {
-              panelRows = renderPanel({ ...snap, nodes }, { width: cols - 2, rows: this.h - (4 + (this.queue.length ? 1 : 0)), selected: this.sel - 1, now: Date.now() });
+              const sa = this.sel > 0 && this.agents[this.sel - 1] ? snap.nodes.findIndex((n) => n.id === this.agents[this.sel - 1].id) : -1;
+              panelRows = renderPanel(snap, { width: cols - 2, rows: this.h - (4 + (this.queue.length ? 1 : 0)), selected: sa, now: Date.now() });
             } catch { panelRows = null; }
           }
           if (!panelRows && nodes.every(Boolean)) treeRows = renderCompact({ ...snap, nodes }, { width: cols - 4, selected: this.sel - 1, now: Date.now() });

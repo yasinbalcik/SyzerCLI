@@ -50,6 +50,7 @@ function createStore(now = Date.now) {
       if (u.action !== undefined) n.action = String(u.action);
       if (u.steps !== undefined) n.steps = u.steps;
       if (u.tokens !== undefined) n.tokens = u.tokens;
+      if (u.model) n.model = u.model;
     },
     finish(id, o = {}) {
       const n = find(id);
@@ -304,6 +305,7 @@ function trackOut(out, store) {
     store.event(t('tree_started'), id);
   };
   out.agentRun = (id) => store.run(id);
+  out.agentModel = (id, model) => store.update(id, { model: shortModel(model) });
   out.agentUpdate = (id, action, steps, tokens) => {
     call('agentUpdate', [id, action, steps, tokens]);
     store.update(id, { action, steps: steps == null ? undefined : steps, tokens: tokens == null ? undefined : tokens });

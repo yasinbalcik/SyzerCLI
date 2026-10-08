@@ -83,6 +83,7 @@ async function spawn(parent, call, signal) {
   try {
     hooks.subagentStart({ id: `syz-${process.pid}-${id}`, kind: agent.name });
     const sub = makeSub(parent, agent, label, id, run);
+    po.agentModel && po.agentModel(id, sub.model);
     const r = await limited(parent.cfg.subagentConcurrency || 3, () => {
       po.agentRun && po.agentRun(id);
       sub.spread = gate.active > 1 ? id : null; // birden fazla ajan aynı anda çalışıyorsa key'lere dağıt

@@ -15,7 +15,7 @@ const { undoLast } = require('./tools');
 const providers = require('./providers');
 const { Editor } = require('./input');
 const { Dock } = require('./dock');
-const { createStore, trackOut, renderTree, reportLines } =require('./agent-tree');
+const { createStore, trackOut, renderTree, reportLines } = require('./agent-tree');
 const { McpManager } = require('./mcp');
 const { killAll } = require('./tools');
 const compactMod = require('./compact');
@@ -121,7 +121,7 @@ function makeOut() {
     agentUpdate(id, action, steps) { const e = agents.get(id); if (e) { e.action = action; if (steps != null) e.steps = steps; out.refresh(); } },
     agentDone(id) { agents.delete(id); out.refresh(); },
     refresh() {
-      if (dock && dock.active) { dock.setAgents(agentObjs()); return; }
+      if (dock && dock.active) { dock.setAgents(agentObjs()); if (agents.size) dock.setStatusLabel(t('agents_running', agents.size)); return; }
       if (paused || !agents.size) return;
       out.waiting(true, t('agents_running', agents.size));
       spin.label(t('agents_running', agents.size));
