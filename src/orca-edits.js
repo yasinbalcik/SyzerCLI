@@ -124,6 +124,9 @@ function edits(cmd, ICON, marker) {
 
     // ---- restore: Orca yeniden başlatılınca Syzer oturumunun geri yüklenmesi ----
     ...restoreEdits(),
+
+    // ---- shells: Orca kapanırken açık terminal kabuklarını kapat (sahipsiz pwsh birikmesini önler)
+    ...require('./orca-edits-shells').patches,
   ];
 }
 

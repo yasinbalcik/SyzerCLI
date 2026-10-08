@@ -297,6 +297,16 @@ function run(sub, flags = {}) {
     if (names.length) fs.writeFileSync(SKIP_FILE, names.join(',')); else fs.rmSync(SKIP_FILE, { force: true });
     r = { status: 'ok', skip: names, detail: 'Orca kapalıyken "syzer orca patch" (veya masaüstü kısayolu) ile uygula' };
   }
+  else if (sub === 'config') {
+    // syzer orca config [killShellsOnQuit on|off]
+    const SETTINGS = path.join(os.homedir(), '.syzercli', 'orca', 'settings.json');
+    let cur = {}; try { cur = JSON.parse(fs.readFileSync(SETTINGS, 'utf8')); } catch { /* yok */ }
+    const [key, val] = String(flags.arg || '').split(',');
+    if (key) {
+      if (key !== 'killShellsOnQuit' || !/^(on|off)$/.test(val || '')) r = { status: 'error', detail: 'kullanım: syzer orca config killShellsOnQuit on|off' };
+      else { cur[key] = val === 'on'; fs.mkdirSync(path.dirname(SETTINGS), { recursive: true }); fs.writeFileSync(SETTINGS, JSON.stringify(cur, null, 2)); r = { status: 'ok', settings: { killShellsOnQuit: cur.killShellsOnQuit !== false } }; }
+    } else r = { status: 'ok', settings: { killShellsOnQuit: cur.killShellsOnQuit !== false }, file: SETTINGS };
+  }
   else if (sub === 'uninstall') r = uninstall();
   else if (sub === 'restore') r = restore();
   else r = status();

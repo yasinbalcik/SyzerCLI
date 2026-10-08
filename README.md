@@ -73,6 +73,7 @@ Kaynaktan: depoyu klonla, klasörde `npm link`.
 - Durum olayları Syzer'ın **kendi hook yolundan** (`POST /hook/syzer`, kendi olay ayrıştırıcısı) gider; hiçbir başka ajana bağlı değil.
 - Orca'yı kapatıp açınca Syzer sekmesi geri gelir (kaydırma geçmişi + `syzer --resume <id>`): hook olayları `session_id` taşır, Orca'nın kurtarma listelerine `syzer` eklenmiştir.
 - Ayarlar → AI Provider Accounts'ta **Syzer key yöneticisi** (listele, aktif seç, sil, çoklu key ekle); Ayarlar → Stats & Usage'da **Syzer** filtresi.
+- **Kapanışta kabukları kapatır:** Orca terminalleri kapanırken kasıtlı olarak arka plandaki bir daemon'da yaşatır; bu yüzden Orca'yı kapatınca `pwsh`/`claude` süreçleri birikebilir. Eklenti, Orca kapanırken bu oturumların hepsini kapatır. Kapatmak için: `syzer orca config killShellsOnQuit off` (açmak: `on`).
 - Yama Orca'nın `app.asar` dosyasına uygulanır; yedek `app.asar.syzer-orig`. `syzer orca restore` geri alır, `syzer orca uninstall` otomatik bakımı kaldırır. Orca güncellenip yama silinirse zamanlanmış görev (10 dk'da bir + oturum açılışında) Orca **kapalıyken** yeniden uygular. Yama gruplara ayrılmıştır; Orca değişirse uyumsuz grup atlanır (yarım yama bırakılmaz), diğerleri uygulanır. Durum: `syzer orca status`, günlük: `~/.syzercli/orca/patch.log`.
 
 ## Giriş her zaman açık
