@@ -26,10 +26,6 @@ function eligibleAtStart({ env = process.env, out, input, session }) {
   return true;
 }
 
-function eligibleForCommand({ out, input }) {
-  return !!(out && input && out.isTTY && input.isTTY && sizeOk(out));
-}
-
 // Görünür genişliğe göre keser (ANSI dizilerini bozmaz); renkli metnin içinde kesildiyse sıfırlama ekler.
 function fit(s, n) {
   s = String(s);
@@ -142,4 +138,4 @@ function show({ out = process.stdout, input = process.stdin, title = '', hint = 
   });
 }
 
-module.exports = { eligibleAtStart, eligibleForCommand, show };
+module.exports = { eligibleAtStart, show };

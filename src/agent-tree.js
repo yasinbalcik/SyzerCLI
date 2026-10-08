@@ -210,6 +210,17 @@ function panelLayout(n, rows) {
 }
 function panelHeight(n, rows) { return n > 0 ? panelLayout(n, rows).height : 0; }
 
+// Panel kartlarının ekran konumları (renderPanel ile aynı yerleşim): [{ id, row (panel içinde, 0 tabanlı), rows, c1, c2 }]
+function panelHits(snap, { width, layoutRows } = {}) {
+  if (!snap.nodes.length) return [];
+  const L = panelLayout(snap.nodes.length, layoutRows);
+  const idx = pickShown(snap.nodes, L.shown);
+  const cols = Math.max(1, Math.min(3, idx.length));
+  const cw = Math.floor((width - (cols - 1)) / cols);
+  const base = mainBox('x', width, true).length;
+  return idx.map((ni, k) => ({ id: snap.nodes[ni].id, row: base + Math.floor(k / cols) * 6, rows: 6, c1: (k % cols) * (cw + 1) + 1, c2: (k % cols) * (cw + 1) + cw }));
+}
+
 function renderPanel(snap, { width, rows, layoutRows = rows, selected = -1, now = Date.now() } = {}) {
   if (!snap.nodes.length) return [];
   const sm = summary(snap, now);
@@ -349,5 +360,6 @@ function trackOut(out, store) {
 }
 
 module.exports = {
+  panelHits,
   createStore, renderTree, renderCompact, trackOut, card, renderPanel, renderReport, reportLines, summary, cardRows, panelHeight,
 };

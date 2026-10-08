@@ -27,14 +27,6 @@ test('eligibleAtStart matrix', () => {
   for (const b of bad) assert.strictEqual(splash.eligibleAtStart({ ...ok, ...b }), false, JSON.stringify(Object.keys(b)));
 });
 
-test('eligibleForCommand', () => {
-  assert.strictEqual(splash.eligibleForCommand({ out: mkOut(), input: mkIn() }), true);
-  assert.strictEqual(splash.eligibleForCommand({ out: mkOut({ isTTY: false }), input: mkIn() }), false);
-  assert.strictEqual(splash.eligibleForCommand({ out: mkOut(), input: mkIn({ isTTY: false }) }), false);
-  assert.strictEqual(splash.eligibleForCommand({ out: mkOut({ rows: 23 }), input: mkIn() }), false);
-  assert.strictEqual(splash.eligibleForCommand({ out: mkOut({ columns: 49 }), input: mkIn() }), false);
-});
-
 test('show closes on first key', async () => {
   const out = mkOut(); const input = mkIn();
   const p = splash.show({ out, input, fps: 200 });

@@ -23,32 +23,24 @@ const { estimate, windowOf } = compactMod;
 const cmds2 = require('./cmds2');
 const cmds = require('./cmds');
 const splash = require('./splash');
+const header = require('./header');
+const cmdinfo = require('./cmdinfo');
+const { Scrollback } = require('./scrollback');
+const { headerRows } = header;
 
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const BUILTIN = ['help', 'model', 'models', 'usage', 'keys', 'lang', 'perm', 'skills', 'context', 'clear', 'exit',
   'effort', 'fallback', 'undo', 'resume', 'stats', 'plan', 'go', 'agents', 'subagent',
-  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web', 'runs', 'run', 'tree', 'logo'];
+  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web', 'runs', 'run', 'tree'];
 const LABEL = { read_file: 'Read', write_file: 'Write', edit_file: 'Update', list_dir: 'List', find_files: 'Find', search_files: 'Search', run_command: 'Run', use_skill: 'Skill', spawn_agent: 'Agent' };
 const PLAN_PREFIX = '[PLAN MODE] Use read-only tools only. Do NOT modify anything. Investigate, then answer with a concise numbered plan and ask for approval at the end.\n\n';
 
 function banner(s, reasoning) {
-  const { cfg, ctx } = s;
-  const ready = cfg.keys.filter(usable).length;
-  const w = Math.max(30, (process.stdout.columns || 80) - 16);
-  const row = (label, value) => `${C.gray(pad(label, 11))}${value}`;
-  const lines = [
-    `${C.orange('◆')} ${C.bold('SyzerCLI')} ${C.gray(`v${pkg.version}`)}`,
-    '',
-    row(t('lbl_provider'), C.cyan(providers.current().name)),
-    row(t('lbl_model'), C.cyan(s.model)),
-    row(t('lbl_keys'), t('keys_summary', cfg.keys.length, ready, (cfg.active | 0) + 1) + C.gray(` · ${cfg.lang}`)),
-    ...(reasoning !== false ? [row(t('lbl_effort'), C.cyan(s.effort))] : []),
-    row(t('lbl_mode'), t(`perm_${s.perm}`)),
-    row(t('lbl_dir'), trunc(s.cwd, w)),
-    row(t('lbl_ctx'), t('ctx_summary', ctx.files.length, ctx.skills.length, ctx.commands.length)),
-  ];
-  return box(lines) + '\n' + C.gray(t('hint')) + '\n';
+  const cols = process.stdout.columns || 80;
+  return headerRows(hdrView(s), reasoning, pkg.version, cols).join('\n') + '\n';
 }
+
+const hdrView = (s) => ({ busy: !!s.busy, model: s.model, effort: s.effort, cwd: s.cwd, providerName: providers.current().name });
 
 function makeOut() {
   let spin = null;
@@ -220,7 +212,7 @@ async function start(cfg, opts = {}, io = {}) {
     },
   });
   const getPrompt = () => `${s.plan ? C.cyan('plan ') : ''}${C.orange('❯')} `;
-  const ask = async (q) => { const r = await editor.read(q, { history: false }); return r.exit ? '' : r.text; };
+  const ask = async (q) => { const r = await editor.read(q, { history: false, frame: false }); return r.exit ? '' : r.text; };
 
   // Paralel alt ajanlar aynı anda onay isteyebilir: sorular sıraya girer, spinner soru süresince durur
   let confirmChain = Promise.resolve();
@@ -249,7 +241,76 @@ async function start(cfg, opts = {}, io = {}) {
   if (Object.keys(s.settings.mcpServers).length) {
     s.mcp = await new McpManager().load(s.settings.mcpServers, s.cwd);
   }
-  console.log(banner(s, await supportsReasoning(s.model, { cacheOnly: true }))); // açılışta ağ isteği yok
+  const reasoning0 = await supportsReasoning(s.model, { cacheOnly: true }); // açılışta ağ isteği yok
+  const rich = !!(process.stdout.isTTY && process.stdin.isTTY && !process.env.NO_COLOR && !process.env.SYZER_NO_FRAME && (process.stdout.rows || 0) >= 16);
+  let anim = null;
+  let screen = null;
+  let actionBusy = false;
+  let sb = null;
+  if (rich) {
+    // Sabit ekran: üstte dönen logolu başlık, altta giriş kutusu; çıktılar aradaki bölgede kayar
+    const view = () => hdrView(s);
+    // Alternatif ekran: terminalin kaydırma geçmişi yok, başlık ve kutu yerinden oynamaz
+    const ALT = '\x1b[?1049h\x1b[?1007l\x1b[?1000h\x1b[?1006h\x1b[>4;1m'; // modifyOtherKeys: Shift+Enter ayırt edilsin; + fare tekerleği raporu (kaydırma için)
+    process.stdout.write(ALT);
+    process.on('exit', () => { try { process.stdout.write('\x1b[>4;0m\x1b[?1000l\x1b[?1006l\x1b[r\x1b[?1049l'); } catch { /* önemsiz */ } });
+    header.setup(process.stdout, view, reasoning0, pkg.version);
+    editor.screen = true;
+    sb = new Scrollback({
+      region: () => { const r = header.region(process.stdout); return dock.active ? { top: r.top, bottom: Math.max(r.top + 1, process.stdout.rows - dock.h) } : r; },
+      enabled: () => !dock.viewing,
+      restore: (row, col) => {
+        if (editor._framed === 'screen' && editor.mode === 'line') process.stdout.write(`\x1b[${row};${col}H\x1b7` + editor.parked() + '\x1b[?25h');
+        else process.stdout.write(`\x1b[${row};${col}H` + (dock.active ? '\x1b[?25l' : '\x1b[?25h'));
+      },
+    });
+    editor.scroller = sb;
+    editor.suggest = (text) => cmdinfo.suggest(text, { builtin: BUILTIN, skills: s.ctx.skills, commands: s.ctx.commands });
+    editor.onHeight = (foot) => { header.layout.foot = foot; const r = header.region(process.stdout); process.stdout.write(`\x1b[${r.top};${r.bottom}r`); sb.offset = 0; sb.live(); };
+    sb.onClick = (x, y) => { if (dock.viewing) return; if (dock.active) { dock.click(y, x); return; } editor.click(y, x); };
+    sb.onWheel = (n) => editor.wheel(n);
+    editor.onAction = async (id) => {
+      if (dock.active || actionBusy) return;
+      actionBusy = true;
+      try {
+        if (id === 'effort') {
+          const v = await editor.pick({ title: t('lbl_effort'), items: cmds.EFFORTS.map((e) => ({ label: e, value: e, color: header.effortColor(e) })), current: s.effort });
+          if (v) await editor.withOutput(async () => { if (await cmds.effortSet(cfg, v, s.model)) s.effort = cfg.effort; });
+        } else if (id === 'model') {
+          const list = await require('./models').freeModels('');
+          const v = await editor.pick({ title: t('lbl_model'), items: list.map((m) => ({ label: m.id, value: m.id, hint: m.ctx ? Math.round(m.ctx / 1000) + 'k' : '' })), current: s.model });
+          if (v) await editor.withOutput(async () => { await cmds.modelSet(cfg, v); s.model = cfg.model; });
+        } else if (id === 'key') {
+          if (!cfg.keys.length) { await editor.withOutput(async () => console.log(C.yellow(t('no_keys')))); return; }
+          const { mask, usable } = require('./keys');
+          const v = await editor.pick({
+            title: t('lbl_keys'),
+            items: cfg.keys.map((e, i) => ({ label: `#${i + 1}  ${mask(e.key)}`, value: String(i + 1), hint: e.disabled ? 'disabled' : usable(e) ? '' : 'limit' })),
+            current: String((cfg.active | 0) + 1),
+          });
+          if (v) await editor.withOutput(async () => { await slash('/keys use ' + v); setTitle(cfg, null); });
+        } else if (id === 'provider') {
+          const items = providers.list().map((p) => ({ label: p.name, value: p.id, hint: `${p.id === cfg.provider ? cfg.keys.length : require('./config').loadKeys(p.id).keys.length} key` }));
+          const v = await editor.pick({ title: t('lbl_provider'), items, current: cfg.provider });
+          if (v && v !== cfg.provider) await editor.withOutput(async () => { await slash('/provider ' + v); });
+        } else if (id === 'perm') {
+          const v = await editor.pick({ title: t('lbl_mode'), items: ['ask', 'auto', 'readonly'].map((m) => ({ label: t(`perm_${m}`), value: m })), current: s.perm });
+          if (v) await editor.withOutput(async () => { if (cmds.permSet(cfg, v)) s.perm = v; });
+        }
+      } finally { actionBusy = false; editor._render(); }
+    };
+    sb.attachInput();
+    sb.attachOutput();
+    editor.placeholder = t('frame_ph');
+    editor.frame = (cols) => header.makeFrame(s, reasoning0, t, cols);
+    anim = header.animate({ view, reasoning: reasoning0, version: pkg.version, editor });
+    screen = { view, reasoning: reasoning0, ALT, sb };
+    process.stdout.on('resize', () => {
+      header.reapply(process.stdout, view, reasoning0, pkg.version);
+      if (sb.offset > 0) sb.draw(); else sb.live();
+      if (editor.mode === 'line' && editor._framed === 'screen') editor._drawFooter(false);
+    });
+  } else console.log(banner(s, reasoning0));
   if (s.mcp) {
     s.mcp.errors.forEach((e) => s.out.warn(t('mcp_fail', e.name, e.message)));
     if (s.mcp.clients.length) console.log(C.gray(t('mcp_loaded', s.mcp.clients.length, s.mcp.defs.length)) + '\n');
@@ -261,6 +322,7 @@ async function start(cfg, opts = {}, io = {}) {
   let webUi = null;
   editor.onInterrupt = () => { if (ctrl) ctrl.abort(); };
   const dock = new Dock({ editor });
+  if (screen) { dock.onAltExit = () => { process.stdout.write(screen.ALT); header.setup(process.stdout, screen.view, screen.reasoning, pkg.version); sb.offset = 0; sb.live(); }; dock.top = header.HDR_ROWS + 1; dock.floor = header.FOOT_ROWS; dock.reserve = header.FOOT_ROWS; dock.footer = () => header.makeFrame(s, screen.reasoning, t, process.stdout.columns || 80).below[1]; }
   const tree = createStore();
   s.tree = tree;
   trackOut(s.out, tree);
@@ -283,6 +345,7 @@ async function start(cfg, opts = {}, io = {}) {
 
   const chat = async (text, images = []) => {
     ctrl = new AbortController();
+    s.busy = true; // maskot zıplasın
     tree.newTurn();
     tree.setMain({ model: s.model, effort: s.effort });
     let docked = false;
@@ -330,18 +393,20 @@ async function start(cfg, opts = {}, io = {}) {
       else { printReport(); console.error(`${C.red('✖')} ${err.message}\n`); }
     }
     ctrl = null;
+    s.busy = false;
   };
 
   const slash = async (line) => {
     const [cmd, ...rest] = line.slice(1).trim().split(/\s+/);
     const arg = rest.join(' ').trim();
     switch (cmd) {
-      case 'help': case '?': { const ls = t('help').split('\n'); const tip = ls.pop(); console.log([...ls, t('help2'), t('help3'), t('help4'), t('help5'), t('help6'), tip].join('\n')); return; }
+      case 'help': case '?': console.log(cmdinfo.helpLines({ skills: s.ctx.skills, commands: s.ctx.commands, cols: process.stdout.columns || 80 }).join(String.fromCharCode(10))); return;
       case 'exit': case 'quit': return 'exit';
       case 'clear':
         resetSession(s);
         if (process.stdout.isTTY) process.stdout.write('[2J[3J[H'); // ekranı ve kaydırma geçmişini temizle
-        console.log(banner(s, await supportsReasoning(s.model, { cacheOnly: true })));
+        if (screen) { sb.clear(); header.setup(process.stdout, screen.view, screen.reasoning, pkg.version); }
+        else console.log(banner(s, await supportsReasoning(s.model, { cacheOnly: true })));
         console.log(C.gray(t('cleared')));
         return;
       case 'usage': await cmds.usage(cfg); return;
@@ -394,12 +459,6 @@ async function start(cfg, opts = {}, io = {}) {
         console.log(C.gray('Ayrıntı için: /run <no>'));
         return;
       }
-      case 'logo': {
-        if (splash.eligibleForCommand({ out: process.stdout, input: process.stdin })) {
-          await splash.show({ out: process.stdout, input: process.stdin, title: '◆ SyzerCLI v' + pkg.version, hint: t('splash_hint'), color: !process.env.NO_COLOR, swallowKey: true });
-        } else console.log(C.gray(t('splash_unavailable')));
-        return;
-      }
       case 'tree': {
         if (dock.active && typeof dock.openTree === 'function') { dock.openTree(); return; }
         try {
@@ -430,7 +489,7 @@ async function start(cfg, opts = {}, io = {}) {
         if (cfg.provider !== was) {
           s.model = cfg.model;
           s.effort = cfg.effort;
-          console.log(banner(s, await supportsReasoning(s.model)));
+          if (!screen) console.log(banner(s, await supportsReasoning(s.model)));
           setTitle(cfg, null);
         }
         return;
@@ -508,7 +567,7 @@ async function start(cfg, opts = {}, io = {}) {
   let pendingKeys = [];
   let splashExit = false;
   try {
-    if (splash.eligibleAtStart({ env: process.env, out: process.stdout, input: process.stdin, session: s })) {
+    if (!rich && splash.eligibleAtStart({ env: process.env, out: process.stdout, input: process.stdin, session: s })) {
       const sr = await splash.show({ out: process.stdout, input: process.stdin, title: '◆ SyzerCLI v' + pkg.version, hint: t('splash_hint'), color: true });
       if (sr.exit) splashExit = true; else pendingKeys = sr.keys || [];
     }
@@ -532,6 +591,8 @@ async function start(cfg, opts = {}, io = {}) {
       } else await chat(text, r.images);
     }
   } finally {
+    if (anim) anim.stop();
+    if (screen && process.stdout.isTTY) process.stdout.write('\x1b[>4;0m\x1b[?1000l\x1b[?1006l\x1b[r\x1b[?1049l');
     killAll(s);
     if (s.mcp) s.mcp.close();
     editor.stop();

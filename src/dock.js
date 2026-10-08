@@ -5,7 +5,7 @@
 // Normal çıktı kaydırma bölgesinde (üstte) akmaya devam eder; kullanıcı yeni mesajı yazıp sıraya koyabilir.
 // Alt ajan listesi: giriş boşken ↓ / ← ile listeye geç, ↑↓ ile seç, Enter ile ajanın CANLI içeriğini aç (tam ekran), Esc/← ile dön.
 const { C, vlen, trunc } = require('./ui');
-const { renderCompact, renderTree, renderPanel, panelHeight } = require('./agent-tree');
+const { renderCompact, renderTree, renderPanel, panelHeight, panelHits } = require('./agent-tree');
 const { t } = require('./i18n');
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -34,6 +34,12 @@ class Dock {
     this.paused = false;
     this.h = 0;
     this.frame = 0;
+    this.top = 1; // kayan bölgenin ilk satırı (sabit başlık varsa 1'den büyük)
+    this.floor = 0; // en az bu kadar alt satır ayır
+    this.reserve = 0; // dock kapanınca alt kutu için ayrılan satırlar
+    this.footer = null; // () => son satır metni
+    this.hits = []; // tıklanabilir alt ajan alanları (mutlak satır)
+    this.onAltExit = null; // tam ekran modunda: görünümden dönünce ekranı yeniden kur
   }
 
   supported() { return !!(this.out.isTTY && this.in.isTTY && this.out.rows >= 16 && !process.env.SYZER_NO_DOCK); }
@@ -68,8 +74,8 @@ class Dock {
   need() {
     const base = 4 + (this.queue.length ? 1 : 0);
     // Bitmiş kartlar da panelde kalır: mağazadaki düğüm sayısı ile çalışan ajan sayısından büyüğü ayrılır (yeni düğüm henüz depoda olmayabilir)
-    if (this.panelMode()) return base + panelHeight(Math.max(this.agents.length, this.totalNodes()), this.out.rows);
-    return base + (this.agents.length ? 1 + Math.min(this.agents.length, 6) + 1 : 0);
+    if (this.panelMode()) return Math.max(this.floor, base + panelHeight(Math.max(this.agents.length, this.totalNodes()), this.out.rows));
+    return Math.max(this.floor, base + (this.agents.length ? 1 + Math.min(this.agents.length, 6) + 1 : 0));
   }
 
   async begin() {
@@ -87,7 +93,7 @@ class Dock {
       this.out.write(`${ESC}[${this.rows};1H${NL.repeat(row - bottom)}`);
       row = bottom;
     }
-    this.out.write(`${ESC}[1;${bottom}r${ESC}[${row};${pos.col}H${ESC}[?25l`);
+    this.out.write(`${ESC}[${this.top};${bottom}r${ESC}[${row};${pos.col}H${ESC}[?25l`);
     this.active = true;
     this.sel = -1;
     this.savedHistory = this.editor.useHistory;
@@ -121,7 +127,7 @@ class Dock {
         this.out.write(`${ESC}[${oldBottom};1H${NL.repeat(row - newBottom)}`);
         row = newBottom;
       }
-      this.out.write(`${ESC}[1;${newBottom}r${ESC}[${row};${col}H`);
+      this.out.write(`${ESC}[${this.top};${newBottom}r${ESC}[${row};${col}H`);
       this.h = want;
     } finally { this.growing = false; }
   }
@@ -147,6 +153,16 @@ class Dock {
     this.queue.push(result);
     if (this.need() > this.h) this.grow();
     this.draw();
+  }
+
+  // Fare tıklaması: bir alt ajan kartına/satırına tıklanınca canlı görünümünü aç
+  click(row, col) {
+    if (!this.active || this.viewing) return false;
+    const h = (this.hits || []).find((x) => row >= x.row && row < x.row + (x.rows || 1) && col >= (x.c1 || 1) && col <= (x.c2 || 9999));
+    const a = h && this.agents.find((x) => x.id === h.id);
+    if (!a) return false;
+    this.openView(a);
+    return true;
   }
 
   // Klavye: true dönerse tuş tüketildi
@@ -242,7 +258,11 @@ class Dock {
     this.out.write = orig;
     process.stderr.write = this._origErr;
     const bottom = this.rows - this.h;
-    orig(`${ESC}[?1049l${ESC}7${ESC}[1;${bottom}r${ESC}8${ESC}[?25l`);
+    if (this.onAltExit) { // zaten alternatif ekrandayız: taze alt ekran aç, düzeni yeniden kur
+      orig(`${ESC}[?1049l${ESC}[?1049h${ESC}[?1007l`);
+      try { this.onAltExit(); } catch { /* önemsiz */ }
+      orig(`${ESC}[?25l`);
+    } else orig(`${ESC}[?1049l${ESC}7${ESC}[${this.top};${bottom}r${ESC}8${ESC}[?25l`);
     for (const [fn, chunk, enc] of this._buf) { try { fn(chunk, typeof enc === 'string' ? enc : undefined); } catch { /* önemsiz */ } }
     this._buf = [];
     this.draw();
@@ -308,8 +328,8 @@ class Dock {
   inputLine(width) {
     const items = this.editor.items;
     const cur = this.editor.cur;
-    const label = (it) => (typeof it === 'string' ? it : C.cyan(it.label));
-    const plain = (it) => (typeof it === 'string' ? it : it.label);
+    const label = (it) => (typeof it === 'string' ? (it === '\n' ? '↵' : it) : C.cyan(it.label));
+    const plain = (it) => (typeof it === 'string' ? (it === '\n' ? '↵' : it) : it.label);
     const room = Math.max(8, width - 4);
     let start = 0;
     let w = items.slice(0, cur).reduce((a, it) => a + vlen(plain(it)), 0);
@@ -352,9 +372,12 @@ class Dock {
       const mark = (i) => (this.sel === i ? C.orange('❯') : ' ');
       let treeRows = null;
       let panelRows = null;
+      let snapRef = null;
+      this.hits = [];
       try {
         if (this.getTree) {
           const snap = this.getTree();
+          snapRef = snap;
           const nodes = this.agents.map((a) => snap.nodes.find((n) => n.id === a.id && (n.status === 'queued' || n.status === 'running')));
           if (nodes.every(Boolean) && this.panelMode()) {
             try {
@@ -366,8 +389,14 @@ class Dock {
         }
       } catch { treeRows = null; }
       const shownAgents = Math.min(this.agents.length, 6);
-      if (panelRows) lines.push(...panelRows);
-      else if (treeRows) treeRows.forEach((r, i) => lines.push(` ${i <= shownAgents ? mark(i) : ' '} ${r}`));
+      if (panelRows) {
+        const at = lines.length;
+        lines.push(...panelRows);
+        try { this.hits = panelHits(snapRef, { width: cols - 2, layoutRows: this.out.rows }).map((h) => ({ ...h, row: top + at + h.row })); } catch { this.hits = []; }
+      } else if (treeRows) {
+        const at = lines.length;
+        treeRows.forEach((r, i) => { lines.push(` ${i <= shownAgents ? mark(i) : ' '} ${r}`); if (i >= 1 && this.agents[i - 1]) this.hits.push({ id: this.agents[i - 1].id, row: top + at + i, rows: 1, c1: 1, c2: 9999 }); });
+      }
       else {
         lines.push(` ${mark(0)} ${this.sel === 0 ? C.bold('● main') : '● main'}`);
         this.agents.slice(0, 6).forEach((a, i) => {
@@ -382,6 +411,7 @@ class Dock {
       }
     }
     while (lines.length < this.h) lines.push('');
+    if (this.footer && this.h >= 5 && !lines[this.h - 1] && this.h === this.floor) { try { lines[this.h - 1] = this.footer(); } catch { /* önemsiz */ } }
     let s = `${ESC}7`;
     lines.slice(0, this.h).forEach((l, i) => { s += `${ESC}[${top + i};1H${ESC}[2K${l}`; });
     s += `${ESC}8`;
@@ -395,7 +425,7 @@ class Dock {
     const top = this.rows - this.h + 1;
     let s = `${ESC}7`;
     for (let i = 0; i < this.h; i++) s += `${ESC}[${top + i};1H${ESC}[2K`;
-    s += `${ESC}[r${ESC}8${ESC}[?25h`;
+    s += (this.reserve ? `${ESC}[${this.top};${this.rows - this.reserve}r` : `${ESC}[r`) + `${ESC}8${ESC}[?25h`;
     this.out.write(s);
     this.active = false;
     this.editor.dock = null;

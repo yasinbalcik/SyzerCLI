@@ -7,7 +7,7 @@ const path = require('node:path');
 const { t, setLang } = require('../src/i18n');
 
 const root = path.join(__dirname, '..');
-const KEYS = ['splash_hint', 'splash_help', 'splash_unavailable'];
+const KEYS = ['splash_hint'];
 
 test('splash i18n keys: filled, tr differs from en, de falls back to en', () => {
   try {
@@ -23,27 +23,12 @@ test('splash i18n keys: filled, tr differs from en, de falls back to en', () => 
   } finally { setLang('en'); }
 });
 
-test('help6 mentions /logo in en and tr', () => {
-  try {
-    setLang('en'); assert.ok(t('help6').includes('/logo'));
-    setLang('tr'); assert.ok(t('help6').includes('/logo'));
-  } finally { setLang('en'); }
-});
-
-test('repl BUILTIN contains logo and slash handles it', () => {
-  const src = fs.readFileSync(path.join(root, 'src', 'repl.js'), 'utf8');
-  const line = src.split(/\r?\n/).find((l) => l.includes('const BUILTIN'));
-  const block = src.slice(src.indexOf('const BUILTIN'), src.indexOf('];', src.indexOf('const BUILTIN')));
-  assert.ok(line && /'logo'/.test(block));
-  assert.ok(/case 'logo':/.test(src));
-});
-
-test('package version 3.23.0 and scripts.test lists every test file', () => {
+test('package version 3.24.0 and scripts.test lists every test file', () => {
   const pkg = require('../package.json');
-  assert.strictEqual(pkg.version, '3.23.0');
+  assert.strictEqual(pkg.version, '3.24.0');
   const lock = require('../package-lock.json');
-  assert.strictEqual(lock.version, '3.23.0');
-  assert.strictEqual(lock.packages[''].version, '3.23.0');
+  assert.strictEqual(lock.version, '3.24.0');
+  assert.strictEqual(lock.packages[''].version, '3.24.0');
   for (const f of fs.readdirSync(__dirname).filter((n) => n.endsWith('.test.js'))) {
     assert.ok(pkg.scripts.test.includes('test/' + f), f + ' missing from scripts.test');
   }
