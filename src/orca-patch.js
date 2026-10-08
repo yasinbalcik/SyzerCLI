@@ -34,7 +34,10 @@ function sourceHash() {
   for (const f of files.sort()) { try { h.update(path.basename(f)).update(fs.readFileSync(f)); } catch { /* önemsiz */ } }
   return h.digest('hex');
 }
-const markerOf = (cmd) => `/*syzer-orca:${PATCH_VERSION}:${crypto.createHash('sha1').update(cmd).update(sourceHash()).digest('hex').slice(0, 8)}*/`;
+const markerOf = (cmd) => `/*syzer-orca:${PATCH_VERSION}:${crypto.createHash('sha1').update(cmd).update(sourceHash()).update(`skip:${skipList().join(',')}`).digest('hex').slice(0, 8)}*/`;
+// Hata ayıklama: bazı yama gruplarını kalıcı olarak atla (syzer orca skip restore,usage). Boş = hepsi uygulanır.
+const SKIP_FILE = path.join(os.homedir(), '.syzercli', 'orca', 'skip-groups.txt');
+const skipList = () => { try { return fs.readFileSync(SKIP_FILE, 'utf8').split(/[\s,]+/).filter(Boolean); } catch { return []; } };
 const GROUPS_FILE = path.join(os.homedir(), '.syzercli', 'orca', 'groups.json');
 const readGroups = () => { try { return JSON.parse(fs.readFileSync(GROUPS_FILE, 'utf8')); } catch { return null; } };
 const edits = (cmd) => require('./orca-edits').edits(cmd, ICON, markerOf(cmd));
@@ -134,6 +137,7 @@ function buildPatched(dir, srcAsar, unpackedSrc, cmd) {
     for (const ed of edits(cmd)) { if (!groups.has(ed.group)) groups.set(ed.group, []); groups.get(ed.group).push(ed); }
     const skipped = [];
     for (const [name, list] of groups) {
+      if (name !== 'core' && skipList().includes(name)) { skipped.push(`${name} (skipped by user)`); continue; }
       const snapshot = new Map(edited);
       try {
         for (const ed of list) {
@@ -287,6 +291,12 @@ function run(sub, flags = {}) {
   let r;
   if (sub === 'patch') { r = patch({ dryRun: flags.dryRun, quiet: flags.quiet }); log(`patch: ${r.status}${r.detail ? ` — ${r.detail}` : ''}`); }
   else if (sub === 'install') { r = install({ shortcut: flags.shortcut }); const p = patch(); r.patch = p; log(`install: ${r.status}; patch: ${p.status}`); }
+  else if (sub === 'skip') {
+    const names = String(flags.arg || '').split(/[\s,]+/).filter(Boolean);
+    fs.mkdirSync(path.dirname(SKIP_FILE), { recursive: true });
+    if (names.length) fs.writeFileSync(SKIP_FILE, names.join(',')); else fs.rmSync(SKIP_FILE, { force: true });
+    r = { status: 'ok', skip: names, detail: 'Orca kapalıyken "syzer orca patch" (veya masaüstü kısayolu) ile uygula' };
+  }
   else if (sub === 'uninstall') r = uninstall();
   else if (sub === 'restore') r = restore();
   else r = status();
