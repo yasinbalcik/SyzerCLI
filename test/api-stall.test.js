@@ -59,10 +59,10 @@ test('keep-alive yorumları zamanlayıcıyı sıfırlar', async () => {
       clearInterval(iv);
       res.write(sse('tamam'));
       res.end('data: [DONE]\n\n');
-    }, 400);
+    }, 900);
     res.on('close', () => clearInterval(iv));
   }, async (provider) => {
-    const r = await call(provider, { stallMs: 150 });
+    const r = await call(provider, { stallMs: 400 });
     assert.strictEqual(r.content, 'tamam');
   });
 });
@@ -89,4 +89,64 @@ test('SYZER_STALL_MS ortam değişkeni sınırı belirler', async () => {
   } finally {
     if (old === undefined) delete process.env.SYZER_STALL_MS; else process.env.SYZER_STALL_MS = old;
   }
+});
+
+test('hata durumu + takılan gövde gerçek status kodunu korur', async () => {
+  await withServer((req, res) => {
+    res.writeHead(429, { 'Content-Type': 'application/json' });
+    res.write('{"error":'); // gövde hiç bitmez
+  }, async (provider) => {
+    const t0 = Date.now();
+    await assert.rejects(call(provider, { stallMs: 200 }), (e) => e instanceof KeyError && e.status === 429);
+    assert.ok(Date.now() - t0 < 3000);
+  });
+});
+
+test('çok büyük SYZER_STALL_MS varsayılana düşer (sahte takılma yok)', async () => {
+  const old = process.env.SYZER_STALL_MS;
+  process.env.SYZER_STALL_MS = '99999999999';
+  try {
+    await withServer((req, res) => {
+      setTimeout(() => { res.writeHead(200, sseHead); res.write(sse('ok')); res.end('data: [DONE]\n\n'); }, 100);
+    }, async (provider) => {
+      assert.strictEqual((await call(provider)).content, 'ok');
+    });
+  } finally {
+    if (old === undefined) delete process.env.SYZER_STALL_MS; else process.env.SYZER_STALL_MS = old;
+  }
+});
+
+for (const bad of ['abc', '0', '-5']) {
+  test(`geçersiz SYZER_STALL_MS (${bad}) varsayılana düşer`, async () => {
+    const old = process.env.SYZER_STALL_MS;
+    process.env.SYZER_STALL_MS = bad;
+    try {
+      await withServer((req, res) => {
+        setTimeout(() => { res.writeHead(200, sseHead); res.write(sse('ok')); res.end('data: [DONE]\n\n'); }, 200);
+      }, async (provider) => {
+        assert.strictEqual((await call(provider)).content, 'ok');
+      });
+    } finally {
+      if (old === undefined) delete process.env.SYZER_STALL_MS; else process.env.SYZER_STALL_MS = old;
+    }
+  });
+}
+
+test('gövde sırasında kullanıcı iptali AbortError olur', async () => {
+  await withServer((req, res) => {
+    res.writeHead(200, sseHead);
+    res.write(sse('x'));
+  }, async (provider) => {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 100);
+    await assert.rejects(call(provider, { stallMs: 5000, signal: ac.signal }), (e) => e.name === 'AbortError' && !(e instanceof KeyError));
+  });
+});
+
+test('önceden iptal edilmiş sinyal AbortError verir', async () => {
+  await withServer(() => { /* sessiz */ }, async (provider) => {
+    const ac = new AbortController();
+    ac.abort();
+    await assert.rejects(call(provider, { stallMs: 5000, signal: ac.signal }), (e) => e.name === 'AbortError' && !(e instanceof KeyError));
+  });
 });

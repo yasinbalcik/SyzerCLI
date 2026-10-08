@@ -78,6 +78,8 @@ npm test          # node:test, no dependencies
 npm run build:exe # dist/syzer.exe + tarball
 ```
 
+`SYZER_STALL_MS` (default 90000 ms): a model request that receives no data for that long is retried / falls back to the next model; raise it for very slow reasoning models.
+
 Pushing a `v*` tag builds and publishes the release (exe, tarball, `SHA256SUMS.txt`) via GitHub Actions.
 
 License: MIT

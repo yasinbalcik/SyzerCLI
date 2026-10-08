@@ -26,10 +26,14 @@ async function errorFrom(res) {
 // Takılma (idle) sınırı: bu kadar süre hiç veri gelmezse istek iptal edilir
 const STALL_MS = 90000;
 
+const MAX_TIMER_MS = 2147483647; // setTimeout üst sınırı; aşan değer anında tetiklenir
+
+const validMs = (n) => Number.isInteger(n) && n > 0 && n <= MAX_TIMER_MS;
+
 function stallLimit(stallMs) {
-  if (Number.isInteger(stallMs) && stallMs > 0) return stallMs;
+  if (validMs(stallMs)) return stallMs;
   const env = Number(process.env.SYZER_STALL_MS);
-  return Number.isInteger(env) && env > 0 ? env : STALL_MS;
+  return validMs(env) ? env : STALL_MS;
 }
 
 // Tek bir key ile stream isteği. İçerik/araç çağrısı gelmeden önceki hatalar KeyError olarak fırlar.
@@ -44,8 +48,8 @@ async function chatStream({ key, model, messages, tools, effort, signal, onText,
   let started = false;
   let stalled = false;
   let timer = null;
-  const onUserAbort = () => ctl.abort();
-  if (signal) { if (signal.aborted) ctl.abort(); else signal.addEventListener('abort', onUserAbort, { once: true }); }
+  const onUserAbort = () => ctl.abort(signal.reason);
+  if (signal) { if (signal.aborted) ctl.abort(signal.reason); else signal.addEventListener('abort', onUserAbort, { once: true }); }
   const arm = () => {
     clearTimeout(timer);
     timer = setTimeout(() => { stalled = true; ctl.abort(); }, limit);
@@ -70,70 +74,81 @@ async function chatStream({ key, model, messages, tools, effort, signal, onText,
   }
 
   async function run() {
-  let res;
-  arm();
-  try {
-    res = await fetch(`${provider.base}/chat/completions`, {
-      method: 'POST',
-      signal: ctl.signal,
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...provider.headers() },
-      body: JSON.stringify(body),
-    });
-  } catch (e) {
-    if (e.name === 'AbortError' || (signal && signal.aborted) || stalled) throw e;
-    throw new KeyError(503, `network: ${(e.cause && (e.cause.code || e.cause.message)) || e.message}`); // geçici ağ hatası → yeniden dene / yedek model
-  }
-  arm(); // header geldi
-  if (!res.ok) throw await errorFrom(res);
-
-  const decoder = new TextDecoder();
-  const calls = [];
-  let buf = '';
-  let content = '';
-  let usage = null;
-
-  const handle = (data) => {
-    let j;
-    try { j = JSON.parse(data); } catch { return; }
-    if (j.error) {
-      const e = new KeyError(j.error.code || 500, j.error.message || 'stream error');
-      if (started) { e.status = 0; }
-      throw e;
+    let res;
+    arm();
+    try {
+      res = await fetch(`${provider.base}/chat/completions`, {
+        method: 'POST',
+        signal: ctl.signal,
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...provider.headers() },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      if (e.name === 'AbortError' || (signal && signal.aborted) || stalled) throw e;
+      throw new KeyError(503, `network: ${(e.cause && (e.cause.code || e.cause.message)) || e.message}`); // geçici ağ hatası → yeniden dene / yedek model
     }
-    if (j.usage) usage = j.usage;
-    const d = j.choices?.[0]?.delta;
-    if (!d) return;
-    const thought = d.reasoning || d.reasoning_content; // OpenRouter: reasoning · NVIDIA: reasoning_content
-    if (thought && !started) onThinking && onThinking(thought);
-    if (d.content) { started = true; content += d.content; onText && onText(d.content); }
-    for (const tc of d.tool_calls || []) {
-      started = true;
-      const c = (calls[tc.index ?? 0] ||= { id: '', name: '', arguments: '' });
-      if (tc.id) c.id = tc.id;
-      if (tc.function?.name) c.name += tc.function.name;
-      if (tc.function?.arguments) c.arguments += tc.function.arguments;
+    if (!res.ok) {
+      // Hata gövdesi takılsa bile gerçek durum kodu korunur: watchdog kapatılır, gövde kendi kısa süresiyle okunur
+      clearTimeout(timer);
+      let bound;
+      const fallback = new Promise((r) => { bound = setTimeout(() => r(new KeyError(res.status, res.statusText || `HTTP ${res.status}`)), Math.min(limit, 5000)); });
+      try {
+        throw await Promise.race([errorFrom(res), fallback]);
+      } finally {
+        clearTimeout(bound);
+        res.body && res.body.cancel().catch(() => {});
+      }
     }
-  };
+    arm(); // header geldi
 
-  for await (const chunk of res.body) {
-    arm(); // her parça (keep-alive yorumları dahil) zamanlayıcıyı sıfırlar
-    buf += decoder.decode(chunk, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, idx).trim();
-      buf = buf.slice(idx + 1);
-      if (!line.startsWith('data:')) continue; // ": OPENROUTER PROCESSING" yorumları vb.
-      const data = line.slice(5).trim();
-      if (data === '[DONE]') return finish();
-      handle(data);
+    const decoder = new TextDecoder();
+    const calls = [];
+    let buf = '';
+    let content = '';
+    let usage = null;
+
+    const handle = (data) => {
+      let j;
+      try { j = JSON.parse(data); } catch { return; }
+      if (j.error) {
+        const e = new KeyError(j.error.code || 500, j.error.message || 'stream error');
+        if (started) { e.status = 0; }
+        throw e;
+      }
+      if (j.usage) usage = j.usage;
+      const d = j.choices?.[0]?.delta;
+      if (!d) return;
+      const thought = d.reasoning || d.reasoning_content; // OpenRouter: reasoning · NVIDIA: reasoning_content
+      if (thought && !started) onThinking && onThinking(thought);
+      if (d.content) { started = true; content += d.content; onText && onText(d.content); }
+      for (const tc of d.tool_calls || []) {
+        started = true;
+        const c = (calls[tc.index ?? 0] ||= { id: '', name: '', arguments: '' });
+        if (tc.id) c.id = tc.id;
+        if (tc.function?.name) c.name += tc.function.name;
+        if (tc.function?.arguments) c.arguments += tc.function.arguments;
+      }
+    };
+
+    for await (const chunk of res.body) {
+      arm(); // her parça (keep-alive yorumları dahil) zamanlayıcıyı sıfırlar
+      buf += decoder.decode(chunk, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (!line.startsWith('data:')) continue; // ": OPENROUTER PROCESSING" yorumları vb.
+        const data = line.slice(5).trim();
+        if (data === '[DONE]') return finish();
+        handle(data);
+      }
     }
-  }
-  return finish();
+    return finish();
 
-  function finish() {
-    const toolCalls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${Date.now()}_${i}` }));
-    return { content, toolCalls, usage };
-  }
+    function finish() {
+      const toolCalls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${Date.now()}_${i}` }));
+      return { content, toolCalls, usage };
+    }
   }
 }
 
