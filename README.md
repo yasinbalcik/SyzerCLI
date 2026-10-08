@@ -23,7 +23,7 @@ Kurulum: bu klasörde `npm link` → `syzer`
 
 ## Alt ajanlar ve Orca işçileri
 
-- `spawn_agent`: ana oturumun içinde çalışan alt ajanlar (paralel). Ayrıntıları görmek için sohbette `/runs` (liste) ve `/run <no>` (görev, her araç çağrısı ve sonucu, rapor); web arayüzünde alt ajan kartına tıklayınca açılır.
+- `spawn_agent`: ana oturumun içinde çalışan alt ajanlar (paralel). Çalışırken her ajan canlı bir satırda görünür (görev, son araç çağrısı, adım sayısı, süre). Ayrıntıları görmek için sohbette `/runs` (liste) ve `/run <no>` (görev, her araç çağrısı ve sonucu, rapor); web arayüzünde alt ajan kartına tıklayınca açılır.
 - `spawn_syzer` (yalnızca Orca içinde): her görev **ayrı bir Orca terminalinde çalışan bağımsız bir Syzer** olur; sekmesinden canlı izlenebilir, sonuç ana ajana rapor olarak döner. Tek seferlik kullanım: `syzer -y --prompt-file görev.txt --out sonuc.txt`.
 
 ## Dayanıklılık

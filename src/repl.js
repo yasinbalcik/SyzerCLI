@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const pkg = require('../package.json');
 const { t, setLang } = require('./i18n');
-const { C, box, pad, trunc, spinner, MdStream } = require('./ui');
+const { C, box, pad, trunc, spinner, MdStream, vlen } = require('./ui');
 const { usable } = require('./keys');
 const { runTurn } = require('./agent');
 const { createSession, resetSession } = require('./session');
@@ -87,14 +87,25 @@ function makeOut() {
     notice(msg) { console.log(`  ${C.green('✔')} ${C.gray(msg)}`); },
 
     // --- alt ajanlar: tek spinner satırında her ajanın anlık işi ---
-    agentStart(id, label) { agents.set(id, { label, action: '…' }); out.refresh(); },
-    agentUpdate(id, action) { const e = agents.get(id); if (e) { e.action = action; out.refresh(); } },
+    agentStart(id, label) { agents.set(id, { label, action: '…', t0: Date.now(), steps: 0 }); out.refresh(); },
+    agentUpdate(id, action, steps) { const e = agents.get(id); if (e) { e.action = action; if (steps != null) e.steps = steps; out.refresh(); } },
     agentDone(id) { agents.delete(id); out.refresh(); },
     refresh() {
       if (paused || !agents.size) return;
       out.waiting(true, t('agents_running', agents.size));
       spin.label(t('agents_running', agents.size));
-      spin.detail([...agents.values()].map((e) => `${e.label.split(':')[0]}: ${e.action}`).join('  │  '));
+      if (!out._tick) out._tick = setInterval(() => { if (agents.size) out.refresh(); else { clearInterval(out._tick); out._tick = null; } }, 1000);
+      spin.detail('');
+      const list = [...agents.values()];
+      const cols = (process.stdout.columns || 100) - 4;
+      spin.rows(list.map((e, i) => {
+        const mark = i === list.length - 1 ? '└' : '├';
+        const secs = Math.floor((Date.now() - e.t0) / 1000);
+        const tail = C.gray(` · ${e.steps} ${t('lbl_steps')} · ${secs}s`);
+        const room = Math.max(20, cols - vlen(tail) - vlen(mark) - 3);
+        const text = trunc(`${e.label}  ${e.action}`.replace(/\s+/g, ' '), room);
+        return `  ${C.gray(mark)} ${text.replace(e.label, C.bold(trunc(e.label, 40))).replace(e.action, C.gray(e.action))}${tail}`;
+      }));
     },
     // Onay sorusu sırasında spinner çizimini durdurur
     pause(on) { paused = on; if (on && spin) { spin.stop(); spin = null; } },

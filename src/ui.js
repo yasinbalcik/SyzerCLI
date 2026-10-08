@@ -51,10 +51,12 @@ const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '
 
 // Canlı durum satırı: ⠋ etiket… 12s · son düşünce parçası
 function spinner(label) {
-  if (!process.stderr.isTTY) return { stop() {}, label() {}, detail() {}, meta() {} };
+  if (!process.stderr.isTTY) return { stop() {}, label() {}, detail() {}, meta() {}, rows() {} };
   let i = 0;
   let detail = '';
   let meta = '';
+  let rows = []; // başlığın altına çizilen ek satırlar (çalışan alt ajanlar)
+  let drawn = 0; // son çizimde başlığın altındaki satır sayısı
   const started = Date.now();
   const draw = () => {
     const cols = (process.stderr.columns || 80) - 1;
@@ -68,7 +70,11 @@ function spinner(label) {
       while (vlen(d) > room) d = d.slice(1);
       tail = C.gray(' · ') + C.dim(C.italic(d));
     }
-    process.stderr.write(`\r\x1b[2K${head}${tail}`);
+    const cursorUp = drawn > 0 ? `\x1b[${drawn}A` : '';
+    const body = rows.map((r) => `\n\x1b[2K${r.length ? r : ''}`).join('');
+    const pad = drawn > rows.length ? '\n\x1b[2K'.repeat(drawn - rows.length) + `\x1b[${drawn - rows.length}A` : '';
+    process.stderr.write(`${cursorUp}\r\x1b[2K${head}${tail}${body}${pad}`);
+    drawn = rows.length;
   };
   process.stderr.write('\x1b[?25l');
   draw();
@@ -77,7 +83,8 @@ function spinner(label) {
     label(l) { label = l; },
     detail(d) { detail = d; },
     meta(m) { meta = m; },
-    stop() { clearInterval(timer); process.stderr.write('\r\x1b[2K\x1b[?25h'); },
+    rows(r) { rows = r; },
+    stop() { clearInterval(timer); process.stderr.write(`${drawn > 0 ? `\x1b[${drawn}A` : ''}\r\x1b[0J\x1b[?25h`); drawn = 0; },
   };
 }
 process.on('exit', () => { if (process.stderr.isTTY) process.stderr.write('\x1b[?25h'); });

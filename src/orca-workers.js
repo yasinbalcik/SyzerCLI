@@ -75,6 +75,7 @@ async function spawnWorker(parent, call, signal) {
   const title = `Syzer: ${String(a.title || a.description || 'worker').slice(0, 40)}`;
   const po = parent.out;
   po.agentStart && po.agentStart(`w${id}`, `worker: ${title}`);
+  po.agentUpdate && po.agentUpdate(`w${id}`, 'Orca sekmesinde çalışıyor');
   const t0 = Date.now();
   const run = { id: `w${id}`, label: title, agent: 'syzer-worker', prompt: a.prompt, steps: [], report: '', ok: false };
   parent.runs = parent.runs || [];
