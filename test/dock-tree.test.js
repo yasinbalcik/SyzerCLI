@@ -323,3 +323,45 @@ test('setStatusLabel keeps the elapsed start', () => {
   d.setStatusLabel('c');
   assert.strictEqual(d.status, null); // no status running -> not resurrected
 });
+
+// ---- final fix wave: layout rows, running first, count path ----
+const cardTops = (buf) => (strip(buf).match(/╭/g) || []).length - 1; // minus main box
+const cardBots = (buf) => (strip(buf).match(/╰/g) || []).length - 1;
+test('draw: 36 rows with 7 nodes draws 6 cards and +1; 28 rows draws 3 and +4', () => {
+  const a = mkPanel(7, 36, 100, 1); a.d.draw();
+  assert.strictEqual(cardTops(a.get()), 6);
+  assert.strictEqual(cardBots(a.get()), 6);
+  assert.match(strip(a.get()), /\+1/);
+  assert.strictEqual(a.get().split('\x1b[2K').length - 1, a.d.h);
+  const b = mkPanel(7, 28, 100, 1); b.d.draw();
+  assert.strictEqual(cardTops(b.get()), 3);
+  assert.strictEqual(cardBots(b.get()), 3);
+  assert.match(strip(b.get()), /\+4/);
+});
+
+test('draw: running card is shown and selectable behind finished ones', () => {
+  const nodes = [stNode(1, 'done'), stNode(2, 'done'), stNode(3, 'done'), stNode(4, 'running')];
+  const r = mk(() => ({ main: { model: 'mainmodel', effort: 'e' }, log: [], nodes }));
+  r.d.out.rows = 28; r.d.out.columns = 100; r.d.rows = 28;
+  r.d.agents = [{ id: 4, no: 4, kind: 'kind4', label: 'l', t0: Date.now(), steps: 0, tokens: 0 }];
+  r.d.h = r.d.need(); r.d.sel = 1; r.d.draw();
+  const txt = strip(r.get());
+  assert.match(txt, /● kind4/);
+  assert.match(txt, /\+1/);
+  assert.strictEqual(cardTops(r.get()), 3);
+  const orange = '\x1b[38;5;208m';
+  const row = r.get().split('\x1b[2K').filter((l) => /╭/.test(strip(l))).pop();
+  const parts = row.split('╭');
+  assert.strictEqual(parts.length, 4);
+  assert.ok(parts[2].endsWith(orange)); // 3rd shown = running
+  assert.ok(!parts[0].endsWith(orange) && !parts[1].endsWith(orange));
+});
+
+test('need uses getTreeCount without a full snapshot', () => {
+  const p = mkPanel(3, 30);
+  let snaps = 0;
+  p.d.getTree = () => { snaps++; return { main: {}, log: [], nodes: [] }; };
+  p.d.getTreeCount = () => 7;
+  assert.strictEqual(p.d.need(), 4 + panelHeight(7, 30));
+  assert.strictEqual(snaps, 0);
+});

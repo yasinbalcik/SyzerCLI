@@ -59,6 +59,10 @@ function createStore(now = Date.now) {
       if (o.model) n.model = o.model;
       n.t1 = now();
     },
+    abortActive() {
+      for (const n of nodes) if (n.status === 'running' || n.status === 'queued') { n.status = 'aborted'; n.t1 = now(); }
+    },
+    count() { return nodes.length; },
     event(text, id, kind = 'info') {
       log.push({ t: now(), id, text: String(text), kind });
       if (log.length > LOG_MAX) log = log.slice(log.length - LOG_MAX);
@@ -165,14 +169,27 @@ function mainBox(text, width, color) {
   ];
 }
 
+// Taşmada önce çalışan/bekleyen düğümler (başlama sırasıyla), kalan yere en yeni biten düğümler; sonuç özgün sırada.
+function pickShown(nodes, max) {
+  const all = nodes.map((_, i) => i);
+  if (nodes.length <= max) return all;
+  const live = (i) => nodes[i].status === 'running' || nodes[i].status === 'queued';
+  const act = all.filter(live).slice(0, Math.max(0, max));
+  const rest = Math.max(0, max - act.length);
+  const fin = rest > 0 ? all.filter((i) => !live(i)).slice(-rest) : [];
+  return act.concat(fin).sort((a, b) => a - b);
+}
+
 // Kartları en çok 3 sütunda dizer; `maxCards` kadarını gösterir.
 function cardGrid(nodes, maxCards, { width, selected = -1, now, color = true }) {
-  const vis = nodes.slice(0, maxCards);
+  const idx = pickShown(nodes, maxCards);
+  const vis = idx.map((i) => nodes[i]);
+  const selPos = idx.indexOf(selected);
   const cols = Math.max(1, Math.min(3, vis.length));
   const cw = Math.floor((width - (cols - 1)) / cols);
   const lines = [];
   for (let r = 0; r < vis.length; r += cols) {
-    const cs = vis.slice(r, r + cols).map((n, k) => card(n, { width: cw, selected: r + k === selected, now, color }));
+    const cs = vis.slice(r, r + cols).map((n, k) => card(n, { width: cw, selected: r + k === selPos, now, color }));
     for (let l = 0; l < 6; l++) lines.push(cs.map((c) => c[l]).join(' '));
   }
   return lines;
@@ -193,16 +210,17 @@ function panelLayout(n, rows) {
 }
 function panelHeight(n, rows) { return n > 0 ? panelLayout(n, rows).height : 0; }
 
-function renderPanel(snap, { width, rows, selected = -1, now = Date.now() } = {}) {
+function renderPanel(snap, { width, rows, layoutRows = rows, selected = -1, now = Date.now() } = {}) {
   if (!snap.nodes.length) return [];
   const sm = summary(snap, now);
-  const running = snap.nodes.filter((n) => n.status === 'running').length;
+  const running = snap.nodes.filter((n) => n.status === 'running' || n.status === 'queued').length;
   const m = snap.main;
   const text = 'main' + (m.model ? ' · ' + shortModel(m.model) : '') + (m.effort ? ' · ' + m.effort : '') +
     ' · ' + t('rep_agents', sm.agents) + ' · ' + t('pn_running', running) + ' · ' + t('rep_done', sm.done) +
-    ' · ' + fmtSecs(sm.secs);
+    (sm.stopped ? ' · ' + t('rep_stopped', sm.stopped) : '') + (sm.failed ? ' · ' + t('rep_failed', sm.failed) : '') +
+    (sm.aborted ? ' · ' + t('rep_aborted', sm.aborted) : '') + ' · ' + fmtSecs(sm.secs);
   const lines = mainBox(text, width, true);
-  const L = panelLayout(snap.nodes.length, rows);
+  const L = panelLayout(snap.nodes.length, layoutRows);
   lines.push(...cardGrid(snap.nodes, L.shown, { width, selected, now }));
   if (L.hidden > 0) lines.push(C.gray(fit(t('tree_more', L.hidden), width)));
   return lines.slice(0, Math.max(1, rows));

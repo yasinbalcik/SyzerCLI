@@ -457,3 +457,51 @@ test('spawn calls agentModel with sub.model', async () => {
   assert.equal(seen.length, 1);
   assert.equal(seen[0][1], 'org/sub-m');
 });
+
+// ---- final fix wave ----
+test('renderPanel: layoutRows decides layout, rows only caps', () => {
+  const o = renderPanel(mk(7).snapshot(), { width: 100, rows: 16, layoutRows: 36, now: 5000 });
+  const txt = strip(o.join('\n'));
+  assert.equal((txt.match(/╭/g) || []).length, 7);
+  assert.match(txt, /\+1/);
+  assert.equal(o.length, 16);
+});
+
+test('renderPanel: running cards stay visible when early agents finished', () => {
+  const s = mk(4); s.finish(1, { ok: true }); s.finish(2, { ok: true }); s.finish(3, { ok: true });
+  const txt = strip(renderPanel(s.snapshot(), { width: 100, rows: 28, now: 5000 }).join('\n'));
+  assert.equal((txt.match(/╭/g) || []).length, 4);
+  assert.match(txt, /● explore/);
+  assert.match(txt, /\+1/);
+  assert.ok(txt.indexOf('task 2') < txt.indexOf('task 3') && txt.indexOf('task 3') < txt.indexOf('task 4'));
+  assert.ok(!/task 1/.test(txt));
+  const m = mk(8); m.finish(1, { ok: true }); m.finish(3, { ok: true }); m.finish(5, { ok: true });
+  const t36 = strip(renderPanel(m.snapshot(), { width: 100, rows: 36, layoutRows: 36, now: 5000 }).join('\n'));
+  assert.equal((t36.match(/● explore/g) || []).length, 5); // all running shown
+  assert.match(t36, /task 8/); assert.match(t36, /task 6/);
+});
+
+test('renderPanel header counts add up', () => {
+  const s = mk(5); s.finish(1, { ok: true }); s.finish(2, { outcome: 'stopped' }); s.finish(3, { outcome: 'failed' });
+  s.start(6, { kind: 'x' }); s.finish(4, { outcome: 'aborted' });
+  const h = strip(renderPanel(s.snapshot(), { width: 140, rows: 28, now: 5000 })[1]);
+  assert.match(h, /6 agents · 2 running · 1 done · 1 stopped · 1 failed · 1 aborted/);
+  const h2 = strip(renderPanel(mk(2).snapshot(), { width: 140, rows: 28, now: 5000 })[1]);
+  assert.ok(!/stopped|failed|aborted/.test(h2));
+});
+
+test('store abortActive and count', () => {
+  const s = mk(3); s.finish(1, { ok: true });
+  assert.equal(s.count(), 3);
+  s.start(9, { kind: 'q' });
+  s.abortActive();
+  assert.deepEqual(s.snapshot().nodes.map((n) => n.status), ['done', 'aborted', 'aborted', 'aborted']);
+});
+
+test('trackOut: run.aborted yields an aborted node (orca worker abort path)', () => {
+  const s = createStore(); const out = {};
+  trackOut(out, s);
+  out.agentStart('wab12', 'worker: t'); out.agentRun('wab12');
+  out.agentDone('wab12', { aborted: true, ok: false, report: '' });
+  assert.equal(s.snapshot().nodes[0].status, 'aborted');
+});

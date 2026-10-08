@@ -266,7 +266,9 @@ async function start(cfg, opts = {}, io = {}) {
   s.out.getTree = () => tree.snapshot();
   s.out.getRuns = () => s.runs || [];
   dock.getRun = (id) => (s.runs || []).find((r) => r.id === id) || null;
+  s.out.getTreeCount = () => tree.count();
   dock.getTree = () => s.out.getTree();
+  dock.getTreeCount = () => s.out.getTreeCount();
 
   const doCompact = async (hint) => {
     console.log(C.gray(t('compact_start')));
@@ -284,7 +286,10 @@ async function start(cfg, opts = {}, io = {}) {
     tree.setMain({ model: s.model, effort: s.effort });
     let docked = false;
     const closeDock = () => { if (docked) { docked = false; s.out.setDock(null); dock.end(); } };
+    let reported = false;
     const printReport = () => {
+      if (reported) return;
+      reported = true;
       try {
         reportLines(s.out.getTree(), { isTTY: process.stdout.isTTY, columns: process.stdout.columns || 100 }).forEach((l) => console.log(l));
       } catch { /* the report must never break a turn */ }
@@ -320,8 +325,8 @@ async function start(cfg, opts = {}, io = {}) {
       closeDock();
       s.out.waiting(false);
       s.out.endText();
-      if (err.name === 'AbortError') { printReport(); console.log(C.gray(t('aborted')) + '\n'); }
-      else console.error(`${C.red('✖')} ${err.message}\n`);
+      if (err.name === 'AbortError') { try { tree.abortActive(); } catch { /* önemsiz */ } printReport(); console.log(C.gray(t('aborted')) + '\n'); }
+      else { printReport(); console.error(`${C.red('✖')} ${err.message}\n`); }
     }
     ctrl = null;
   };

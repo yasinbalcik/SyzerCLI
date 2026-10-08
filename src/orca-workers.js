@@ -115,7 +115,7 @@ async function spawnWorker(parent, call, signal) {
       ui: { summary: `${title} · ${secs}s · terminal sekmesinde izlenebilir`, body: lines.slice(0, 5).map((l) => `    ${l.slice(0, 110)}`).join('\n') },
     };
   } catch (err) {
-    if (err.name === 'AbortError') throw err;
+    if (err.name === 'AbortError') { run.aborted = true; throw err; }
     run.report = `failed: ${err.message}`;
     return { ok: false, output: `WORKER FAILED: ${err.message}\nDo NOT silently do this work yourself; report the failure to the user.`, ui: { summary: `${title}: ${err.message}` } };
   } finally {

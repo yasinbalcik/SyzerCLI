@@ -27,6 +27,7 @@ class Dock {
     this.agents = []; // [{ id, no, kind, label, t0, steps, tokens }]
     this.getRun = null; // (id) => canlı çalışma kaydı
     this.getTree = null; // () => ağaç snapshot (yoksa eski satırlar)
+    this.getTreeCount = null; // () => düğüm sayısı (kopyasız, need() için)
     this.live = null; // (line) => Promise: /run, /runs tur sürerken hemen çalışır
     this.sel = -1; // -1: giriş odakta · 0: main · 1..n: ajan
     this.viewing = null; // { kind: 'agent'|'tree', id?, scroll, sel? }
@@ -56,7 +57,11 @@ class Dock {
   panelMode() { return this.agents.length > 0 && this.out.rows >= 28 && this.out.columns >= 70; }
 
   totalNodes() {
-    try { const s = this.getTree && this.getTree(); if (s && Array.isArray(s.nodes)) return s.nodes.length; } catch { /* önemsiz */ }
+    try {
+      if (this.getTreeCount) { const c = this.getTreeCount(); if (Number.isFinite(c)) return c; }
+      const s = this.getTree && this.getTree();
+      if (s && Array.isArray(s.nodes)) return s.nodes.length;
+    } catch { /* önemsiz */ }
     return this.agents.length;
   }
 
@@ -354,7 +359,7 @@ class Dock {
           if (nodes.every(Boolean) && this.panelMode()) {
             try {
               const sa = this.sel > 0 && this.agents[this.sel - 1] ? snap.nodes.findIndex((n) => n.id === this.agents[this.sel - 1].id) : -1;
-              panelRows = renderPanel(snap, { width: cols - 2, rows: this.h - (4 + (this.queue.length ? 1 : 0)), selected: sa, now: Date.now() });
+              panelRows = renderPanel(snap, { width: cols - 2, layoutRows: this.out.rows, rows: this.h -(4 + (this.queue.length ? 1 : 0)), selected: sa, now: Date.now() });
             } catch { panelRows = null; }
           }
           if (!panelRows && nodes.every(Boolean)) treeRows = renderCompact({ ...snap, nodes }, { width: cols - 4, selected: this.sel - 1, now: Date.now() });
