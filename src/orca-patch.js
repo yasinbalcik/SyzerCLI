@@ -315,4 +315,4 @@ function run(sub, flags = {}) {
   return r;
 }
 
-module.exports = { run, patch, status, install, uninstall, restore, PATCH_VERSION, markerOf, sourceHash, edits };
+module.exports = { run, patch, status, install, uninstall, restore, PATCH_VERSION, markerOf, sourceHash, edits, openAsar };

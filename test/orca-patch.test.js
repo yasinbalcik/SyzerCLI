@@ -44,8 +44,8 @@ test('marker changes when a patch source file changes (stale-patch guard)', () =
 
 test('shells group closes terminals on quit and its snippet is valid JS', () => {
   const e = patch.edits(CMD).filter((x) => x.group === 'shells');
-  assert.strictEqual(e.length, 1);
-  assert.ok(e[0].to.includes('will-quit') && e[0].to.includes('__syzerInstallQuitKill'));
+  assert.strictEqual(e.length, 2);
+  assert.ok(e.some((x) => x.to.includes('__syzerQuitDaemon(Kua()?GQt:WQt)')));
   assert.ok(!/'/.test(require('../src/orca-snippets/quit-kill').DEFS), 'no single quotes in injected text');
   new Function('I', 'ZYr', 'eH', 'u$t', `${require('../src/orca-snippets/quit-kill').DEFS};return 1`);
 });
