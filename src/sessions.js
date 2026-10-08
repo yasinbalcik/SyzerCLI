@@ -60,4 +60,13 @@ function list(cwd) {
   } catch { return []; }
 }
 
-module.exports = { newId, save, list };
+// Kimliğe göre ara (Orca geçmişinden gelen "syzer-<id>" öneki de kabul edilir); tüm klasörlerde
+function find(id) {
+  const want = String(id).replace(/^syzer-/, '');
+  try {
+    const f = path.join(DIR, `${want}.json`);
+    return JSON.parse(fs.readFileSync(f, 'utf8'));
+  } catch { return null; }
+}
+
+module.exports = { newId, save, list, find };

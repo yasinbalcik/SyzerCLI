@@ -42,7 +42,7 @@ const HELP = `SyzerCLI v${pkg.version}
   syzer usage --summary --json  percent used per provider (for status bars / Orca)
   syzer perm [ask|auto|readonly]
 
-flags: --provider <name> (this run only)  -a/--agent <name> (run as that agent)  --no-agents  -e/--effort <level>  -c/--continue (resume last session)  -k/--key <n> (use key n for this run)  -p/--print  -y/--yes (auto-approve tools)  -m/--model <id>  --json  --no-tools  --no-check`;
+flags: --resume <id> (continue a saved session)  --provider <name> (this run only)  -a/--agent <name> (run as that agent)  --no-agents  -e/--effort <level>  -c/--continue (resume last session)  -k/--key <n> (use key n for this run)  -p/--print  -y/--yes (auto-approve tools)  -m/--model <id>  --json  --no-tools  --no-check`;
 
 function parseArgs(argv) {
   const f = { rest: [] };
@@ -66,6 +66,7 @@ function parseArgs(argv) {
     else if (a === '--token') f.token = argv[++i];
     else if (a === '--no-agents') f.noAgents = true;
     else if (a === '-c' || a === '--continue') f.resume = true;
+    else if (a === '--resume') f.resumeId = argv[++i];
     else if (a === '-m' || a === '--model') f.model = argv[++i];
     else if (a === '-k' || a === '--key') f.key = argv[++i];
     else if (a === '--file' || a === '-f') f.file = argv[++i];
@@ -211,7 +212,7 @@ async function main() {
     if (!prompt) return console.error('No prompt given.');
     return printMode(cfg, f, prompt);
   }
-  return require('../src/repl').start(cfg, { model: f.model, perm: f.yes ? 'auto' : undefined, effort: f.effort, resume: f.resume, agents: !f.noAgents, useTools: !f.noTools });
+  return require('../src/repl').start(cfg, { model: f.model, perm: f.yes ? 'auto' : undefined, effort: f.effort, resume: f.resume, resumeId: f.resumeId, agents: !f.noAgents, useTools: !f.noTools });
 }
 
 main().catch((e) => { console.error(`${C.red('✖')} ${e.message}`); process.exitCode = 1; });
