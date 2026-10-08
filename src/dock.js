@@ -290,13 +290,15 @@ class Dock {
       try {
         if (this.getTree) {
           const snap = this.getTree();
-          const live = { ...snap, nodes: snap.nodes.filter((n) => n.status === 'queued' || n.status === 'running') };
-          treeRows = renderCompact(live, { width: cols - 4, selected: this.sel - 1, now: Date.now() });
+          const nodes = this.agents.map((a) => snap.nodes.find((n) => n.id === a.id && (n.status === 'queued' || n.status === 'running')));
+          if (nodes.every(Boolean)) treeRows = renderCompact({ ...snap, nodes }, { width: cols - 4, selected: this.sel - 1, now: Date.now() });
         }
       } catch { treeRows = null; }
-      if (treeRows) treeRows.forEach((r, i) => lines.push(` ${mark(i)} ${r}`));
-      else lines.push(` ${mark(0)} ${this.sel === 0 ? C.bold('● main') : '● main'}`);
-      if (!treeRows) this.agents.slice(0, 6).forEach((a, i) => {
+      const shownAgents = Math.min(this.agents.length, 6);
+      if (treeRows) treeRows.forEach((r, i) => lines.push(` ${i <= shownAgents ? mark(i) : ' '} ${r}`));
+      else {
+      lines.push(` ${mark(0)} ${this.sel === 0 ? C.bold('● main') : '● main'}`);
+      this.agents.slice(0, 6).forEach((a, i) => {
         const secs = Math.floor((Date.now() - a.t0) / 1000);
         const right = C.gray(`${secs}s · ↓ ${fmtTok(a.tokens)} tokens`);
         const left = `${a.no ? C.orange(`#${a.no} `) : ''}${C.gray('○')} ${this.sel === i + 1 ? C.bold(a.kind) : a.kind}  ${C.gray(a.label)}`;
@@ -305,6 +307,7 @@ class Dock {
         while (vlen(l) > room) l = l.slice(0, -1);
         lines.push(` ${mark(i + 1)} ${l}${' '.repeat(Math.max(1, cols - 4 - vlen(l) - vlen(right)))}${right}`);
       });
+      }
     }
     while (lines.length < this.h) lines.push('');
     let s = `${ESC}7`;

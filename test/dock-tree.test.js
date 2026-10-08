@@ -32,3 +32,34 @@ test('dock falls back to old rows when getTree throws', () => {
   assert.doesNotThrow(() => d.draw());
   assert.match(get(), /○/);
 });
+
+const node = (id, kind, label) => ({ id, kind, label, status: 'running', steps: 1, tokens: 0, t0: Date.now() });
+const strip = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\x1b[78]/g, '');
+const rowsOf = (buf) => buf.split('\x1b[2K').map(strip);
+
+test('marked row follows dock.agents order, extra store nodes not drawn', () => {
+  const snap = { main: {}, log: [], nodes: [node(3, 'worker', 'ccc'), node(9, 'ghost', 'zzz'), node(2, 'reviewer', 'bbb'), node(1, 'explorer', 'aaa')] };
+  const { d, get } = mk(() => snap);
+  d.agents = [1, 2, 3].map((id) => ({ id, no: id, kind: 'k', label: 'l', t0: Date.now(), steps: 0, tokens: 0 }));
+  d.h = d.need();
+  d.sel = 2;
+  d.draw();
+  const marked = rowsOf(get()).filter((r) => r.includes('❯') && !r.startsWith('❯'));
+  assert.strictEqual(marked.length, 1);
+  assert.match(marked[0], /reviewer/);
+  assert.doesNotMatch(get(), /ghost/);
+});
+
+test('more row never carries the mark', () => {
+  const nodes = [];
+  for (let i = 1; i <= 8; i++) nodes.push(node(i, 'kind' + i, 'l' + i));
+  const { d, get } = mk(() => ({ main: {}, log: [], nodes }));
+  d.agents = nodes.map((n) => ({ id: n.id, no: n.id, kind: n.kind, label: 'l', t0: Date.now(), steps: 0, tokens: 0 }));
+  d.h = d.need();
+  d.sel = 8;
+  d.draw();
+  const rows = rowsOf(get());
+  assert.strictEqual(rows.filter((r) => /[├└]/.test(r)).length, 7);
+  assert.ok(rows.some((r) => /└/.test(r) && !/kind/.test(r)));
+  assert.ok(!rows.some((r) => /└/.test(r) && !/kind/.test(r) && r.includes('❯')));
+});
