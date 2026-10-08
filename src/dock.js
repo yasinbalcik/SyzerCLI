@@ -5,6 +5,7 @@
 // Normal çıktı kaydırma bölgesinde (üstte) akmaya devam eder; kullanıcı yeni mesajı yazıp sıraya koyabilir.
 // Alt ajan listesi: giriş boşken ↓ / ← ile listeye geç, ↑↓ ile seç, Enter ile ajanın CANLI içeriğini aç (tam ekran), Esc/← ile dön.
 const { C, vlen, trunc } = require('./ui');
+const { renderCompact } = require('./agent-tree');
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const ESC = '\x1b';
@@ -24,6 +25,7 @@ class Dock {
     this.meta = '';
     this.agents = []; // [{ id, no, kind, label, t0, steps, tokens }]
     this.getRun = null; // (id) => canlı çalışma kaydı
+    this.getTree = null; // () => ağaç snapshot (yoksa eski satırlar)
     this.live = null; // (line) => Promise: /run, /runs tur sürerken hemen çalışır
     this.sel = -1; // -1: giriş odakta · 0: main · 1..n: ajan
     this.viewing = null; // { id, scroll }
@@ -284,8 +286,17 @@ class Dock {
       const hint = this.sel >= 0 ? 'enter: içine gir · esc: geri' : '↓ ajanlar · /run <no>';
       lines.push(C.gray(`${'─'.repeat(Math.max(4, cols - 4 - hint.length - 3))} ${hint} ──`));
       const mark = (i) => (this.sel === i ? C.orange('❯') : ' ');
-      lines.push(` ${mark(0)} ${this.sel === 0 ? C.bold('● main') : '● main'}`);
-      this.agents.slice(0, 6).forEach((a, i) => {
+      let treeRows = null;
+      try {
+        if (this.getTree) {
+          const snap = this.getTree();
+          const live = { ...snap, nodes: snap.nodes.filter((n) => n.status === 'queued' || n.status === 'running') };
+          treeRows = renderCompact(live, { width: cols - 4, selected: this.sel - 1, now: Date.now() });
+        }
+      } catch { treeRows = null; }
+      if (treeRows) treeRows.forEach((r, i) => lines.push(` ${mark(i)} ${r}`));
+      else lines.push(` ${mark(0)} ${this.sel === 0 ? C.bold('● main') : '● main'}`);
+      if (!treeRows) this.agents.slice(0, 6).forEach((a, i) => {
         const secs = Math.floor((Date.now() - a.t0) / 1000);
         const right = C.gray(`${secs}s · ↓ ${fmtTok(a.tokens)} tokens`);
         const left = `${a.no ? C.orange(`#${a.no} `) : ''}${C.gray('○')} ${this.sel === i + 1 ? C.bold(a.kind) : a.kind}  ${C.gray(a.label)}`;

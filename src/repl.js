@@ -265,6 +265,7 @@ async function start(cfg, opts = {}, io = {}) {
   s.out.getTree = () => tree.snapshot();
   s.out.getRuns = () => s.runs || [];
   dock.getRun = (id) => (s.runs || []).find((r) => r.id === id) || null;
+  dock.getTree = () => s.out.getTree();
 
   const doCompact = async (hint) => {
     console.log(C.gray(t('compact_start')));
