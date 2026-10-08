@@ -13,6 +13,14 @@ Kurulum: bu klasörde `npm link` → `syzer`
 - Yeni sürüm yayınlama: `package.json` sürümünü artır → `npm run build:exe` → `gh release create vX.Y.Z dist/syzercli-X.Y.Z.tar.gz dist/syzer.exe`.
 - `syzer usage --summary --json` sağlayıcı başına kalan hak yüzdesini verir (Orca entegrasyonu: `SyzerCLI-Orca`).
 
+## Orca entegrasyonu (Windows)
+
+`syzer orca install [--shortcut]` — bir kez çalıştır, gerisi otomatik:
+- Orca'nın Usage panelinde/durum çubuğunda **Syzer** (sağlayıcı başına yüzde, key sayısı, kalan hak), "yeni terminal" ajan menüsünde Syzer, kenar çubuğunda çalışıyor/bitti göstergesi, oturum geçmişinde `[Syzer]` oturumları (devam et = `syzer --resume`).
+- Yama Orca'nın `app.asar` dosyasına uygulanır; yedek `app.asar.syzer-orig` olarak kalır (`syzer orca restore` geri alır, `syzer orca uninstall` otomatik bakımı kaldırır).
+- Orca kendini güncelleyip yamayı silerse, zamanlanmış görev (10 dk'da bir + oturum açılışında) Orca **kapalıyken** yamayı yeniden uygular. `--shortcut` masaüstüne "Orca (Syzer)" kısayolu da koyar: açmadan önce yamayı denetler.
+- Syzer güncellenince yama kodu da güncellenir (yama sürümü işaretlidir). Orca beklenmedik biçimde değişirse yama atlanır, Orca bozulmaz (`syzer orca status`, günlük: `~/.syzercli/orca/patch.log`).
+
 ## Web arayüzü
 
 `syzer web [--port 8788] [--no-open]` veya sohbette `/web`: Orca benzeri üç bölme. Sol: beceriler/komutlar/ajanlar (tıkla veya `/` ile), model-efor-izin-dil ayarı, key'ler ve kullanım yüzdesi. Orta: sohbet (akış, araç çağrıları, onay butonları). Sağ: çalışma alanları (klasör, git dalı) ve o klasörün kayıtlı oturumları (devam et).
