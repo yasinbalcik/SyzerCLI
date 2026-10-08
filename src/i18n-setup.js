@@ -4,7 +4,7 @@
 module.exports = {
   en: {
     lbl_steps: 'steps',
-    help6: '  /runs · /run <n>           sub-agent runs · full details of one (task, tool calls, report)\n  /tree                      agent map · live subagent tree and event log\n  /web                       open the web UI in the browser',
+    help6: '  /runs · /run <n>           sub-agent runs · full details of one (task, tool calls, report)\n  /tree                      agent map · live subagent tree and event log\n  /logo                      rotating 3D logo\n  /web                       open the web UI in the browser',
     web_open: 'Web UI:',
     su_welcome: "Welcome to SyzerCLI! Let's do a quick first-time setup (Enter keeps the default).",
     su_lang: 'Choose your language:', su_choice: 'Your choice',
@@ -22,7 +22,7 @@ module.exports = {
   },
   tr: {
     lbl_steps: 'adım',
-    help6: '  /runs · /run <no>          alt ajan çalışmaları · birinin tam dökümü (görev, araç çağrıları, rapor)\n  /tree                      ajan haritası · canlı alt ajan ağacı ve olay günlüğü\n  /web                       web arayüzünü tarayıcıda aç',
+    help6: '  /runs · /run <no>          alt ajan çalışmaları · birinin tam dökümü (görev, araç çağrıları, rapor)\n  /tree                      ajan haritası · canlı alt ajan ağacı ve olay günlüğü\n  /logo                      dönen 3D logo\n  /web                       web arayüzünü tarayıcıda aç',
     web_open: 'Web arayüzü:',
     su_welcome: "SyzerCLI'ye hoş geldin! Kısa bir ilk kurulum yapalım (Enter = varsayılan).",
     su_lang: 'Dilini seç:', su_choice: 'Seçimin',

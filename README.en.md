@@ -41,6 +41,10 @@ syzer export last --out chat.md        # save a session as Markdown
 
 In chat, `/help` lists every command. `/plan` produces a read-only plan first, `/go` executes it. `/tree` shows the agent map: the live subagent tree and event log. The live agent panel shows the main model and, as cards, each sub-agent's model, state, current work, steps, tokens and time (the live panel needs a terminal of at least 28 rows × 70 columns; smaller terminals fall back to compact agent rows). When a turn ends (Ctrl+C included) a persistent final report is written into the chat: ⚠ stopped, ✖ failed, ◌ aborted agents are marked.
 
+## Opening splash
+
+On start, an interactive terminal shows a rotating 3D logo until the first key; that key (and anything typed or pasted with it) then goes to the prompt as normal. `/logo` shows it again. It needs a terminal of at least 50x24, appears only in interactive terminals, and `SYZER_NO_LOGO=1` turns the opening splash off.
+
 ## Main commands
 
 | Command | What it does |

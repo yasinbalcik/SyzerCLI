@@ -22,11 +22,12 @@ const compactMod = require('./compact');
 const { estimate, windowOf } = compactMod;
 const cmds2 = require('./cmds2');
 const cmds = require('./cmds');
+const splash = require('./splash');
 
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const BUILTIN = ['help', 'model', 'models', 'usage', 'keys', 'lang', 'perm', 'skills', 'context', 'clear', 'exit',
   'effort', 'fallback', 'undo', 'resume', 'stats', 'plan', 'go', 'agents', 'subagent',
-  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web', 'runs', 'run', 'tree'];
+  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web', 'runs', 'run', 'tree', 'logo'];
 const LABEL = { read_file: 'Read', write_file: 'Write', edit_file: 'Update', list_dir: 'List', find_files: 'Find', search_files: 'Search', run_command: 'Run', use_skill: 'Skill', spawn_agent: 'Agent' };
 const PLAN_PREFIX = '[PLAN MODE] Use read-only tools only. Do NOT modify anything. Investigate, then answer with a concise numbered plan and ask for approval at the end.\n\n';
 
@@ -393,6 +394,12 @@ async function start(cfg, opts = {}, io = {}) {
         console.log(C.gray('Ayrıntı için: /run <no>'));
         return;
       }
+      case 'logo': {
+        if (splash.eligibleForCommand({ out: process.stdout, input: process.stdin })) {
+          await splash.show({ out: process.stdout, input: process.stdin, title: '◆ SyzerCLI v' + pkg.version, hint: t('splash_hint'), color: !process.env.NO_COLOR, swallowKey: true });
+        } else console.log(C.gray(t('splash_unavailable')));
+        return;
+      }
       case 'tree': {
         if (dock.active && typeof dock.openTree === 'function') { dock.openTree(); return; }
         try {
@@ -498,11 +505,24 @@ async function start(cfg, opts = {}, io = {}) {
 
   dock.live = (line) => slash(line);
   editor.start();
+  let pendingKeys = [];
+  let splashExit = false;
   try {
-    while (true) {
+    if (splash.eligibleAtStart({ env: process.env, out: process.stdout, input: process.stdin, session: s })) {
+      const sr = await splash.show({ out: process.stdout, input: process.stdin, title: '◆ SyzerCLI v' + pkg.version, hint: t('splash_hint'), color: true });
+      if (sr.exit) splashExit = true; else pendingKeys = sr.keys || [];
+    }
+  } catch { /* the splash must never break startup */ }
+  try {
+    while (!splashExit) {
       let r;
       if (dock.queue.length) { r = dock.queue.shift(); console.log(`${getPrompt()}${r.display || r.text}`); }
-      else { r = await editor.read(getPrompt()); if (r.exit) break; }
+      else {
+        const p = editor.read(getPrompt());
+        while (pendingKeys.length) { const k = pendingKeys.shift(); editor.inject(k.str, k.key); }
+        r = await p;
+        if (r.exit) break;
+      }
       const text = r.text.trim();
       if (!text && !r.images.length) continue;
       if (/^#\s*\S/.test(text) && !text.includes('\n') && !r.images.length && !text.startsWith('##')) {
