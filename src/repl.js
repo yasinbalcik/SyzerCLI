@@ -161,9 +161,39 @@ function setTitle(cfg, left, keyIndex) {
   process.stdout.write(`\x1b]0;Syzer · ${providers.current().name} · key #${k}${left ? ` · ${left.remaining}/${left.limit}` : ''}\x07`);
 }
 
-function resume(s, saved) {
+// Devam edilen konuşmayı ekrana yeniden döker (Claude'daki gibi): kullanıcı istemleri, yanıtlar, araç çağrıları
+function replay(messages, limit = 40) {
+  const NL = String.fromCharCode(10);
+  const text = (c) => (typeof c === 'string' ? c : (c || []).filter((p) => p.type === 'text').map((p) => p.text).join(NL));
+  const body = messages.slice(1); // sistem istemi hariç
+  const shown = body.length > limit ? body.slice(-limit) : body;
+  if (shown.length < body.length) console.log(C.gray(`  … ${body.length - shown.length} önceki mesaj gizlendi`));
+  const toolName = new Map();
+  for (const m of shown) {
+    if (m.role === 'user') {
+      const x = text(m.content).replace(/^\[PLAN MODE\][^\n]*\n\n/, '').trim();
+      if (x) console.log(`${NL}${C.orange('❯')} ${trunc(x.replace(/\s+/g, ' '), 300)}`);
+    } else if (m.role === 'assistant') {
+      const x = text(m.content).trim();
+      if (x) { const md = new MdStream(); md.push(x + NL); md.end(); }
+      for (const tc of m.tool_calls || []) {
+        let args = {};
+        try { args = JSON.parse(tc.function.arguments || '{}'); } catch { /* boş */ }
+        const label = { read_file: 'Read', write_file: 'Write', edit_file: 'Update', list_dir: 'List', find_files: 'Find', search_files: 'Search', run_command: 'Run', spawn_agent: 'Agent', spawn_syzer: 'Worker' }[tc.function.name] || tc.function.name;
+        const arg = args.path || args.command || args.pattern || args.description || args.title || args.query || '';
+        console.log(`${C.cyan('●')} ${C.bold(label)}${C.gray(`(${trunc(String(arg).replace(/\s+/g, ' '), 80)})`)}`);
+        toolName.set(tc.id, label);
+      }
+    }
+  }
+  console.log('');
+}
+
+function resume(s, saved, { show = false } = {}) {
   s.messages = [s.messages[0], ...saved.messages.slice(1)];
   s.sessionId = saved.id;
+  s.replayPending = true;
+  if (show) { replay(s.messages); s.replayPending = false; }
   console.log(C.green(`✔ ${t('sess_resumed', trunc(saved.title, 50), saved.messages.length - 1)}`));
 }
 
@@ -210,6 +240,7 @@ async function start(cfg, opts = {}, io = {}) {
     s.mcp.errors.forEach((e) => s.out.warn(t('mcp_fail', e.name, e.message)));
     if (s.mcp.clients.length) console.log(C.gray(t('mcp_loaded', s.mcp.clients.length, s.mcp.defs.length)) + '\n');
   }
+  if (s.replayPending) { replay(s.messages); s.replayPending = false; }
   setTitle(cfg, null);
 
   let ctrl = null;
@@ -380,7 +411,7 @@ async function start(cfg, opts = {}, io = {}) {
         list.forEach((x, i) => console.log(`  ${C.gray(String(i + 1))}  ${trunc(x.title, 60)}  ${C.gray(`${new Date(x.ts).toLocaleString()} · ${x.messages.length - 1} msg`)}`));
         const k = await editor.readKey(C.cyan(t('sess_pick')));
         const pick = list[parseInt(k, 10) - 1];
-        if (pick) resume(s, pick);
+        if (pick) resume(s, pick, { show: true });
         return;
       }
       case 'rules': {
