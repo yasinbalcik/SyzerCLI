@@ -85,7 +85,8 @@ function fmtDur(n, now) {
   const s = Math.max(0, Math.round((end - n.t0) / 1000));
   return s >= 60 ? Math.floor(s / 60) + 'm' + (s % 60) + 's' : s + 's';
 }
-const stats = (n, now) => `${n.steps} st · ${fmtTok(n.tokens)} · ${fmtDur(n, now)}`;
+const act = (n) => (n.action && n.action !== '…' ? n.action : '');
+const stats = (n, now) => `${n.steps} ${t('lbl_steps')} · ${fmtTok(n.tokens)} · ${fmtDur(n, now)}`;
 function fmtClock(ts) {
   const d = new Date(ts);
   const p = (x) => String(x).padStart(2, '0');
@@ -103,7 +104,7 @@ function renderCompact(snap, { width, selected = -1, now = Date.now(), max = 6, 
   const extra = snap.nodes.length - shown.length;
   shown.forEach((n, i) => {
     const last = i === shown.length - 1 && extra <= 0 && !more;
-    const body = kindLabel(n) + (n.action ? ' ' + n.action : n.label ? ' ' + n.label : '') +
+    const body = kindLabel(n) + (act(n) ? ' ' + act(n) : n.label ? ' ' + n.label : '') +
       '  ' + stats(n, now);
     const line = (last ? '└ ' : '├ ') + statusColor(n.status, MARK[n.status]) + ' ' + fit(body, width - 4);
     out.push(i === selected ? C.bold(line) : line);
@@ -124,7 +125,7 @@ function boxLines(n, w, now, sel) {
     edge('┌' + '─'.repeat(w - 2) + '┐'),
     row(head, (s) => statusColor(n.status, s)),
     row(shortModel(n.model) || '-', C.gray),
-    row(n.action || n.label || '-'),
+    row(act(n) || n.label || '-'),
     row(stats(n, now), C.gray),
     edge('└' + '─'.repeat(w - 2) + '┘'),
   ];
@@ -195,7 +196,7 @@ function trackOut(out, store) {
     const kind = ix >= 0 ? text.slice(0, ix).trim() : text.trim();
     const name = ix >= 0 ? text.slice(ix + 1).trim() : '';
     store.start(id, { kind, label: name, orca: typeof id === 'string' && id[0] === 'w' });
-    store.event('started', id);
+    store.event(t('tree_started'), id);
   };
   out.agentRun = (id) => store.run(id);
   out.agentUpdate = (id, action, steps, tokens) => {
@@ -206,10 +207,10 @@ function trackOut(out, store) {
     call('agentDone', [id, run]);
     const ok = !!(run && run.ok);
     store.finish(id, { ok, model: shortModel(run && run.model) });
-    if (ok) store.event('done', id);
+    if (ok) store.event(t('tree_done'), id);
     else {
       const first = String((run && run.report) || '').split('\n').filter(Boolean)[0] || '';
-      store.event('error: ' + first.replace(/^failed:\s*/i, ''), id);
+      store.event(t('tree_error') + (first.replace(/^failed:\s*/i, '') || t('tree_aborted')), id);
     }
   };
   out.warn = (msg) => {

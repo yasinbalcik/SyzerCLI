@@ -225,6 +225,7 @@ async function start(cfg, opts = {}, io = {}) {
   let confirmChain = Promise.resolve();
   const confirm = (kind, summary, preview) => {
     const run = async () => {
+      if (dock.viewing) dock.closeView();
       s.out.pause(true);
       try {
         console.log(`${C.yellow('?')} ${C.bold(kind)} ${C.gray(trunc(summary.replace(/\s+/g, ' '), 100))}`);
@@ -391,7 +392,7 @@ async function start(cfg, opts = {}, io = {}) {
         return;
       }
       case 'run': {
-        const r =(s.runs || [])[parseInt(arg, 10) - 1];
+        const r = (s.runs || [])[parseInt(arg, 10) - 1];
         if (!r) { console.log(C.yellow('Kullanım: /run <no>  (liste: /runs)')); return; }
         console.log(`${C.bold(r.agent)} ${C.gray(r.label)}${r.model ? C.gray(` · ${r.model}`) : ''}${r.secs ? C.gray(` · ${r.secs}s`) : ''}`);
         console.log(`${C.cyan('Görev:')}\n${String(r.prompt).split('\n').map((l) => '  ' + l).join('\n')}`);

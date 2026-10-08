@@ -137,7 +137,7 @@ class Dock {
       const v = this.viewing;
       switch (key.name) {
         case 'escape': case 'left': case 'q': this.closeView(); return true;
-        case 'up': v.sel = Math.max(0, v.sel - 1); this.drawView(); return true;
+        case 'up': v.sel = this.agents.length ? Math.max(0, Math.min(v.sel, this.agents.length - 1) - 1) : -1; this.drawView(); return true;
         case 'down': v.sel = Math.min(this.agents.length - 1, v.sel + 1); this.drawView(); return true;
         case 'return': case 'enter': case 'right':
           if (this.agents[v.sel]) this.openView(this.agents[v.sel]);
@@ -237,7 +237,7 @@ class Dock {
       const selected = ag ? snap.nodes.findIndex((n) => n.id === ag.id) : -1;
       return renderTree(snap, { width, rows, selected, now: Date.now() });
     }
-    const a =this.agents.find((x) => x.id === this.viewing.id);
+    const a = this.agents.find((x) => x.id === this.viewing.id);
     const run = this.getRun ? this.getRun(this.viewing.id) : null;
     const lines = [];
     const wrap = (text, indent = '') => {
@@ -272,6 +272,7 @@ class Dock {
     const rows = this.out.rows || 24;
     const room = rows - 2;
     const tree = this.viewing.kind === 'tree';
+    if (tree) this.viewing.sel = Math.min(this.viewing.sel, this.agents.length - 1);
     let all;
     try { all = this.viewLines(cols - 2, room); } catch { all = []; }
     if (tree) all = all.slice(0, room);
@@ -342,16 +343,16 @@ class Dock {
       const shownAgents = Math.min(this.agents.length, 6);
       if (treeRows) treeRows.forEach((r, i) => lines.push(` ${i <= shownAgents ? mark(i) : ' '} ${r}`));
       else {
-      lines.push(` ${mark(0)} ${this.sel === 0 ? C.bold('● main') : '● main'}`);
-      this.agents.slice(0, 6).forEach((a, i) => {
-        const secs = Math.floor((Date.now() - a.t0) / 1000);
-        const right = C.gray(`${secs}s · ↓ ${fmtTok(a.tokens)} tokens`);
-        const left = `${a.no ? C.orange(`#${a.no} `) : ''}${C.gray('○')} ${this.sel === i + 1 ? C.bold(a.kind) : a.kind}  ${C.gray(a.label)}`;
-        const room = Math.max(10, cols - vlen(right) - 6);
-        let l = left;
-        while (vlen(l) > room) l = l.slice(0, -1);
-        lines.push(` ${mark(i + 1)} ${l}${' '.repeat(Math.max(1, cols - 4 - vlen(l) - vlen(right)))}${right}`);
-      });
+        lines.push(` ${mark(0)} ${this.sel === 0 ? C.bold('● main') : '● main'}`);
+        this.agents.slice(0, 6).forEach((a, i) => {
+          const secs = Math.floor((Date.now() - a.t0) / 1000);
+          const right = C.gray(`${secs}s · ↓ ${fmtTok(a.tokens)} tokens`);
+          const left = `${a.no ? C.orange(`#${a.no} `) : ''}${C.gray('○')} ${this.sel === i + 1 ? C.bold(a.kind) : a.kind}  ${C.gray(a.label)}`;
+          const room = Math.max(10, cols - vlen(right) - 6);
+          let l = left;
+          while (vlen(l) > room) l = l.slice(0, -1);
+          lines.push(` ${mark(i + 1)} ${l}${' '.repeat(Math.max(1, cols - 4 - vlen(l) - vlen(right)))}${right}`);
+        });
       }
     }
     while (lines.length < this.h) lines.push('');

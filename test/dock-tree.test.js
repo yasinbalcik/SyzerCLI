@@ -114,3 +114,43 @@ test('submit /tree runs live, not queued', () => {
   assert.strictEqual(called, '/tree');
   assert.strictEqual(d.queue.length, 0);
 });
+
+test('tree -> agent -> close installs and restores write hooks once', () => {
+  const { d } = mkTree([node(1, 'explorer', 'aaa')]);
+  const errW = process.stderr.write;
+  const sink = [];
+  const realW = d.out.write;
+  d.out.write = (s) => sink.push(s);
+  try {
+    d.openTree();
+    d.handleKey('', { name: 'return' });
+    assert.strictEqual(d.viewing.kind, 'agent');
+    d.handleKey('', { name: 'escape' });
+    assert.strictEqual(d.viewing, null);
+    assert.strictEqual(d._origOut, null);
+    assert.strictEqual(process.stderr.write, errW);
+    d.out.write('hello');
+    assert.ok(sink.includes('hello'));
+  } finally { clearInterval(d.viewTimer); if (d.viewing) d.closeView(); d.out.write = realW; }
+});
+
+test('tree selection is clamped when agents shrink', () => {
+  const { d } = mkTree([node(1, 'a', 'x'), node(2, 'b', 'y'), node(3, 'c', 'z')]);
+  try {
+    d.openTree();
+    d.viewing.sel = 2;
+    d.agents = d.agents.slice(0, 1);
+    d.handleKey('', { name: 'up' });
+    assert.ok(d.viewing.sel >= 0 && d.viewing.sel <= 0);
+    d.agents = [];
+    d.handleKey('', { name: 'up' });
+    assert.strictEqual(d.viewing.sel, -1);
+  } finally { clearInterval(d.viewTimer); if (d.viewing) d.closeView(); }
+});
+
+test('closeView (used by confirm before prompting) clears viewing', () => {
+  const { d } = mkTree([node(1, 'a', 'x')]);
+  d.openTree();
+  d.closeView();
+  assert.strictEqual(d.viewing, null);
+});

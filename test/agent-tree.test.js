@@ -223,3 +223,23 @@ test('tree i18n: en/tr keys exist, differ, de falls back to en', () => {
     for (const k of keys) assert.equal(t(k), got.en[k], 'de falls back: ' + k);
   } finally { setLang('en'); }
 });
+
+test('thinking marker does not hide the label; aborted run logs localized text', () => {
+  setLang('en');
+  const st = createStore(); const { o } = fakeOut(); trackOut(o, st);
+  o.agentStart(1, 'explorer: mytask'); o.agentRun(1); o.agentUpdate(1, '…', 1, 5);
+  const txt = strip(renderTree(st.snapshot(), { width: 100, rows: 20 }).join('\n'));
+  assert.match(txt, /mytask/);
+  assert.match(strip(renderCompact(st.snapshot(), { width: 100 }).join('\n')), /mytask/);
+  assert.match(txt, /1 steps/);
+  o.agentDone(1, { ok: false, report: '' });
+  assert.ok(st.snapshot().log.some((e) => /error: aborted/.test(e.text)));
+  assert.ok(st.snapshot().log.some((e) => e.text === 'started'));
+  setLang('tr');
+  try {
+    const st2 = createStore(); const f = fakeOut(); trackOut(f.o, st2);
+    f.o.agentStart(1, 'explorer: x'); f.o.agentDone(1, { ok: true });
+    assert.ok(st2.snapshot().log.some((e) => e.text === 'başladı'));
+    assert.ok(st2.snapshot().log.some((e) => e.text === 'bitti'));
+  } finally { setLang('en'); }
+});

@@ -3,6 +3,7 @@
 // Sonradan eklenen metinler. i18n.js içinde dil tablolarına birleştirilir.
 module.exports = {
   en: {
+    tree_started: 'started', tree_done: 'done', tree_error: 'error: ', tree_aborted: 'aborted',
     tree_hint: 'esc back · ↑↓ select · enter open agent',
     tree_none: 'no subagents yet', tree_log: 'event log', tree_more: '+{0} more',
     agents_running: '{0} agent(s) working',
@@ -46,6 +47,7 @@ module.exports = {
   /plan · /go       plan first, then approve and execute`,
   },
   tr: {
+    tree_started: 'başladı', tree_done: 'bitti', tree_error: 'hata: ', tree_aborted: 'iptal edildi',
     tree_hint: 'esc geri · ↑↓ seç · enter ajanı aç',
     tree_none: 'henüz alt ajan yok', tree_log: 'olay günlüğü', tree_more: '+{0} daha',
     agents_running: '{0} agent çalışıyor',
