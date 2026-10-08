@@ -144,6 +144,8 @@ async function printMode(cfg, f, prompt) {
 }
 
 async function main() {
+  const SU = require('../src/selfupdate');
+  if (!SU.skip(process.argv.slice(2)) && await SU.run()) return; // npm kurulumu açılışta kendini günceller
   const f = parseArgs(process.argv.slice(2));
   if (f.provider) process.env.SYZER_PROVIDER = f.provider; // yalnızca bu çalıştırma için
   const cfg = config.load();

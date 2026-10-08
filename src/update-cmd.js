@@ -3,11 +3,13 @@
 // `syzer update`: exe launcher üzerinden çalışıyorsa launcher zaten güncellemiştir; değilse sürümü karşılaştırıp yönlendirir.
 const pkg = require('../package.json');
 const U = require('./updater');
+const SU = require('./selfupdate');
 const { t } = require('./i18n');
 const { C } = require('./ui');
 
 async function run() {
   console.log(C.gray(t('up_checking')));
+  if (SU.eligible()) { await SU.run({ force: true }); return; } // npm kurulumu: kendini günceller
   try {
     const info = await U.latest({ force: true });
     if (U.cmpVer(info.version, pkg.version) > 0) {

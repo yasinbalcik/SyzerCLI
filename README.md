@@ -54,6 +54,8 @@ irm https://raw.githubusercontent.com/yasinbalcik/SyzerCLI/main/install.ps1 | ie
 
 **exe:** aynı sayfadan tek başına `syzer.exe` de indirebilirsin; her açılışta kendini günceller. Aynı sayfadaki `SHA256SUMS.txt` ile doğrulayabilirsin. Exe imzasız olduğundan Windows SmartScreen ilk açılışta uyarabilir ("Daha fazla bilgi" → "Yine de çalıştır").
 
+**Güncelleme:** npm/terminal kurulumu da exe gibi her açılışta (saatte en fazla bir kez) GitHub'daki son sürüme bakar; yeni sürüm varsa `npm install -g` ile kendini günceller ve komutu yeni sürümle yeniden başlatır. Atlamak: `--no-update` / `SYZER_NO_UPDATE=1`. Git klonu (geliştirme) kendini güncellemez.
+
 **Orca entegrasyonu:** Orca'yı kapat → `syzer orca install --shortcut` → masaüstündeki **Orca (Syzer)** kısayolundan aç. Orca zaten kuruluysa `install.ps1` bunu otomatik yapar.
 
 Kaynaktan: depoyu klonla, klasörde `npm link`.
