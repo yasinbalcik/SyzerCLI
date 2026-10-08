@@ -24,7 +24,7 @@ const cmds = require('./cmds');
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const BUILTIN = ['help', 'model', 'models', 'usage', 'keys', 'lang', 'perm', 'skills', 'context', 'clear', 'exit',
   'effort', 'fallback', 'undo', 'resume', 'stats', 'plan', 'go', 'agents', 'subagent',
-  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web'];
+  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web', 'runs', 'run'];
 const LABEL = { read_file: 'Read', write_file: 'Write', edit_file: 'Update', list_dir: 'List', find_files: 'Find', search_files: 'Search', run_command: 'Run', use_skill: 'Skill', spawn_agent: 'Agent' };
 const PLAN_PREFIX = '[PLAN MODE] Use read-only tools only. Do NOT modify anything. Investigate, then answer with a concise numbered plan and ask for approval at the end.\n\n';
 
@@ -287,6 +287,22 @@ async function start(cfg, opts = {}, io = {}) {
         const k = await editor.readKey(C.cyan(t('effort_pick')));
         const lvl = cmds.EFFORTS[parseInt(k, 10) - 1];
         if (lvl && (await cmds.effortSet(cfg, lvl, s.model))) s.effort = cfg.effort;
+        return;
+      }
+      case 'runs': {
+        const runs = s.runs || [];
+        if (!runs.length) { console.log(C.gray('Henüz alt ajan çalışması yok.')); return; }
+        runs.forEach((r, i) => console.log(`${C.orange(String(i + 1).padStart(2))}  ${C.bold(r.agent)}  ${C.gray(trunc(String(r.label).replace(/\s+/g, ' '), 60))}  ${r.ok ? C.green('✔') : C.red('✖')} ${C.gray(`${(r.steps || []).length} adım · ${r.secs || '?'}s`)}`));
+        console.log(C.gray('Ayrıntı için: /run <no>'));
+        return;
+      }
+      case 'run': {
+        const r = (s.runs || [])[parseInt(arg, 10) - 1];
+        if (!r) { console.log(C.yellow('Kullanım: /run <no>  (liste: /runs)')); return; }
+        console.log(`${C.bold(r.agent)} ${C.gray(r.label)}${r.model ? C.gray(` · ${r.model}`) : ''}${r.secs ? C.gray(` · ${r.secs}s`) : ''}`);
+        console.log(`${C.cyan('Görev:')}\n${String(r.prompt).split('\n').map((l) => '  ' + l).join('\n')}`);
+        (r.steps || []).forEach((st, i) => console.log(`${C.gray(String(i + 1).padStart(2) + '.')} ${C.cyan(st.tool)}${C.gray(`(${trunc(String(st.summary).replace(/\s+/g, ' '), 90)})`)}${st.result ? `\n    ${st.ok === false ? C.red('⎿') : C.gray('⎿')} ${C.gray(trunc(String(st.result).replace(/\s+/g, ' '), 140))}` : ''}`));
+        console.log(`${C.cyan('Rapor:')}\n${String(r.report).split('\n').map((l) => '  ' + l).join('\n')}`);
         return;
       }
       case 'web': {

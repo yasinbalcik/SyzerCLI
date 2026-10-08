@@ -17,7 +17,7 @@ async function limited(max, fn) {
 }
 
 // Alt ajan oturumu: kendi mesaj geçmişi var; izin/plan/geri alma yığını ana oturumla paylaşılır.
-function makeSub(parent, agent, label, id) {
+function makeSub(parent, agent, label, id, run) {
   const cfg = parent.cfg;
   const po = parent.out;
   return {
@@ -53,8 +53,8 @@ function makeSub(parent, agent, label, id) {
       thinking() { po.agentUpdate && po.agentUpdate(id, '…'); },
       text() {},
       endText() {},
-      tool(name, summary) { po.agentUpdate && po.agentUpdate(id, `${name}(${trunc(String(summary).replace(/\s+/g, ' '), 36)})`); },
-      toolResult() {},
+      tool(name, summary) { if (run) run.steps.push({ tool: name, summary: String(summary).slice(0, 300) }); po.agentUpdate && po.agentUpdate(id, `${name}(${trunc(String(summary).replace(/\s+/g, ' '), 36)})`); },
+      toolResult(ok, text, ui) { if (run && run.steps.length) { const st = run.steps[run.steps.length - 1]; st.ok = ok; st.result = (ui && ui.summary ? ui.summary : String(text)).slice(0, 600); } },
       warn(msg) { po.warn(`[${label}] ${msg}`); },
     },
   };
@@ -76,13 +76,17 @@ async function spawn(parent, call, signal) {
   const po = parent.out;
   po.agentStart && po.agentStart(id, label);
   const t0 = Date.now();
+  const run = { id, label, agent: agent.name, prompt: a.prompt, steps: [], report: '', ok: false };
+  parent.runs = parent.runs || [];
+  parent.runs.push(run);
   try {
-    const sub = makeSub(parent, agent, label, id);
+    const sub = makeSub(parent, agent, label, id, run);
     const r = await limited(parent.cfg.subagentConcurrency || 3, () => {
       sub.spread = gate.active > 1 ? id : null; // birden fazla ajan aynı anda çalışıyorsa key'lere dağıt
       return runTurn(sub, a.prompt, signal);
     });
     const report = (r.content || '').trim() || '(no output)';
+    Object.assign(run, { report, ok: true, tokens: r.tokens, calls: r.toolCalls, model: sub.model });
     const secs = ((Date.now() - t0) / 1000).toFixed(1);
     const model = sub.model.split('/').pop().replace(':free', '');
     const lines = report.split('\n').filter((l) => l.trim());
@@ -94,9 +98,11 @@ async function spawn(parent, call, signal) {
     };
   } catch (err) {
     if (err.name === 'AbortError') throw err;
+    run.report = `failed: ${err.message}`;
     return { ok: false, output: `Subagent failed: ${err.message}`, ui: { summary: `${agent.name}: ${err.message}` } };
   } finally {
-    po.agentDone && po.agentDone(id);
+    run.secs = ((Date.now() - t0) / 1000).toFixed(1);
+    po.agentDone && po.agentDone(id, run);
   }
 }
 

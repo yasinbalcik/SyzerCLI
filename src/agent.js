@@ -134,15 +134,16 @@ async function runTurn(session, userContent, signal) {
 
       const calls = res.toolCalls;
       for (let k = 0; k < calls.length;) {
-        if (calls[k].name === 'spawn_agent' && session.canSpawn) {
+        const isSpawn = (n) => n === 'spawn_agent' || n === 'spawn_syzer';
+        if (isSpawn(calls[k].name) && session.canSpawn) {
           // Ardışık spawn_agent çağrıları paralel çalışır
           let e = k;
-          while (e < calls.length && calls[e].name === 'spawn_agent') e++;
+          while (e < calls.length && isSpawn(calls[e].name)) e++;
           const batch = calls.slice(k, e);
           batch.forEach((tc) => out.tool(tc.name, label(tc)));
           out.waiting(true, t('agents_running', batch.length));
           let results;
-          try { results = await Promise.all(batch.map((tc) => spawn(session, tc, signal))); }
+          try { results = await Promise.all(batch.map((tc) => (tc.name === 'spawn_syzer' ? require('./orca-workers').spawnWorker(session, tc, signal) : spawn(session, tc, signal)))); }
           finally { out.waiting(false); }
           batch.forEach((tc, i) => record(tc, results[i]));
           k = e;

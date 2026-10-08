@@ -70,7 +70,10 @@ function start(cfg, { port = 8788, host = '127.0.0.1', open = true, cwd = proces
     toolResult(ok, text, ui) { emit({ type: 'toolResult', ok, summary: ui ? ui.summary : String(text).split('\n')[0].slice(0, 160), body: ui && ui.body ? String(ui.body).replace(/\x1b\[[0-9;]*m/g, '').slice(0, 4000) : null }); },
     warn(msg) { emit({ type: 'warn', text: msg }); },
     notice(msg) { emit({ type: 'notice', text: msg }); },
-    agentStart() {}, agentUpdate() {}, agentEnd() {}, pause() {}, refresh() {},
+    agentStart(id, label) { emit({ type: 'agentStart', id, label }); },
+    agentUpdate(id, action) { emit({ type: 'agentUpdate', id, action }); },
+    agentDone(id, run) { emit({ type: 'agentDone', id, run: run ? { label: run.label, agent: run.agent, prompt: run.prompt, steps: run.steps, report: run.report, ok: run.ok, secs: run.secs, model: run.model, tokens: run.tokens } : null }); },
+    pause() {}, refresh() {},
   };
   const confirm = (kind, summary, preview) => new Promise((resolve) => {
     const id = crypto.randomBytes(6).toString('hex');

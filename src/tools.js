@@ -74,12 +74,26 @@ const SPAWN_DEF = fn(
   ['prompt'],
 );
 
+const WORKER_DEF = fn(
+  'spawn_syzer',
+  'Start an independent Syzer worker in its OWN visible Orca terminal tab (a full separate Syzer process with its own context). ' +
+    'Use for larger parallel jobs the user should be able to watch. Call it several times in one response to run workers in parallel. ' +
+    "Returns the worker's final report when it finishes.",
+  {
+    title: { type: 'string', description: 'short 2-5 word tab title' },
+    prompt: { type: 'string', description: 'complete task instructions; the worker sees nothing else' },
+    agent: { type: 'string', description: 'optional agent profile name (explore, plan, general)' },
+  },
+  ['prompt'],
+);
+
 // Oturumun görebileceği araçlar: alt ajanlar kısıtlı liste alır, ana ajan spawn_agent ve MCP araçlarını da görür
 function toolDefsFor(session) {
   let defs = DEFS;
   if (session.allowedTools) defs = defs.filter((d) => session.allowedTools.has(d.function.name));
   if (session.mcp && session.mcp.defs.length && (!session.allowedTools || session.allowedTools.has('mcp'))) defs = [...defs, ...session.mcp.defs];
-  return session.canSpawn ? [...defs, SPAWN_DEF] : defs;
+  if (!session.canSpawn) return defs;
+  return require('./orca-workers').available() ? [...defs, SPAWN_DEF, WORKER_DEF] : [...defs, SPAWN_DEF];
 }
 
 const MUTATING = new Set(['write_file', 'edit_file', 'run_command', 'run_background']);
@@ -287,6 +301,7 @@ function describe(name, a, cwd) {
     case 'web_search': return a.query;
     case 'bg_output': case 'bg_stop': return `#${a.id}`;
     case 'todo_write': return `${(a.todos || []).length} items`;
+    case 'spawn_syzer': return `worker: ${a.title || String(a.prompt || '').slice(0, 50)}`;
     case 'spawn_agent': return `${a.agent || 'general'}: ${a.description || String(a.prompt || '').slice(0, 50)}`;
     default:
       if (name.startsWith('mcp__')) return name.replace(/^mcp__/, '').replace('__', ' · ');

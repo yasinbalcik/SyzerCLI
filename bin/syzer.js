@@ -36,6 +36,7 @@ const HELP = `SyzerCLI v${pkg.version}
   syzer subagent [model <id|inherit> | effort <lvl|inherit> | concurrency <n>]
   syzer stats                 requests / tokens per day
   syzer lang [tr|en|de|es|ja|zh|ko|pl]
+  syzer --prompt-file <f> [--out <f>]  one-shot from a prompt file (used by Orca workers)
   syzer web [--port 8788] [--no-open]  local web UI (chat, keys, usage, settings)
   syzer orca [status|install [--shortcut]|patch|restore|uninstall]  Orca integration (auto-maintained)
   syzer setup                 run the first-time setup wizard again
@@ -57,6 +58,8 @@ function parseArgs(argv) {
     else if (a === '--check') f.check = true;
     else if (a === '--no-open') f.noOpen = true;
     else if (a === '--quiet') f.quiet = true;
+    else if (a === '--prompt-file') f.promptFile = argv[++i];
+    else if (a === '--out') f.outFile = argv[++i];
     else if (a === '--dry-run') f.dryRun = true;
     else if (a === '--shortcut') f.shortcut = true;
     else if (a === '--summary') f.summary = true;
@@ -123,8 +126,11 @@ async function printMode(cfg, f, prompt) {
     base.mcp.errors.forEach((e) => log(`⚠ MCP "${e.name}": ${e.message}`));
   }
   let r;
+  const writeOut = (text) => { if (f.outFile) { try { fs.writeFileSync(`${f.outFile}.tmp`, text); fs.renameSync(`${f.outFile}.tmp`, f.outFile); } catch { /* önemsiz */ } } };
   try { r = await runTurn(s, prompt); }
+  catch (e) { writeOut(`ERROR: ${e.message}`); throw e; }
   finally { killAll(base); if (base.mcp) base.mcp.close(); }
+  writeOut(r.content || '(no output)');
   if (f.json) {
     console.log(JSON.stringify({ content: r.content, model: s.model, tokens: r.tokens, key: r.keyIndex + 1, ms: r.ms }));
   } else {
@@ -211,6 +217,7 @@ async function main() {
 
   // sohbet
   let prompt = f.rest.join(' ');
+  if (f.promptFile) prompt = fs.readFileSync(f.promptFile, 'utf8').trim();
   if (!process.stdin.isTTY && !prompt) prompt = (await readStdin()).trim();
   else if (!process.stdin.isTTY && prompt) prompt += '\n\n' + (await readStdin()).trim();
   if (prompt || f.print) {
