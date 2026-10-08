@@ -127,12 +127,12 @@ function card(n, { width, selected = false, now = Date.now(), color = true } = {
   };
   const head = MARK[n.status] + ' ' + kindLabel(n);
   return [
-    edge('╭' + '─'.repeat(width - 2) + '╮'),
+    edge('╭' + '─'.repeat(Math.max(0, width - 2)) + '╮'),
     row(head, color ? (s) => statusColor(n.status, s) : null),
     row(shortModel(n.model) || '-', gray),
     row(act(n) || n.label || '-'),
     row(stats(n, now), gray),
-    edge('╰' + '─'.repeat(width - 2) + '╯'),
+    edge('╰' + '─'.repeat(Math.max(0, width - 2)) + '╯'),
   ];
 }
 
@@ -158,9 +158,9 @@ function mainBox(text, width, color) {
   const edge = color ? C.orange : ident;
   const bold = color ? C.bold : ident;
   return [
-    edge('╭' + '─'.repeat(width - 2) + '╮'),
+    edge('╭' + '─'.repeat(Math.max(0, width - 2)) + '╮'),
     edge('│ ') + bold(padTo(fit(text, width - 4), width - 4)) + edge(' │'),
-    edge('╰' + '─'.repeat(width - 2) + '╯'),
+    edge('╰' + '─'.repeat(Math.max(0, width - 2)) + '╯'),
   ];
 }
 
@@ -177,6 +177,21 @@ function cardGrid(nodes, maxCards, { width, selected = -1, now, color = true }) 
   return lines;
 }
 
+// Panel yerleşimi: renderPanel ve panelHeight aynı hesabı kullanır.
+function panelLayout(n, rows) {
+  const cols = Math.min(3, n);
+  const avail = rows - 3;
+  const want = Math.min(cardRows(rows), Math.floor(avail / 6));
+  let k = Math.ceil(n / cols);
+  let over = false;
+  if (k > want) { over = true; k = Math.max(0, Math.min(cardRows(rows), Math.floor((avail - 1) / 6))); }
+  const shown = Math.min(n, k * cols);
+  const hidden = n - shown;
+  const height = Math.min(3 + 6 * Math.ceil(shown / cols) + (over && hidden > 0 ? 1 : 0), Math.max(1, rows));
+  return { shown, hidden, height };
+}
+function panelHeight(n, rows) { return n > 0 ? panelLayout(n, rows).height : 0; }
+
 function renderPanel(snap, { width, rows, selected = -1, now = Date.now() } = {}) {
   if (!snap.nodes.length) return [];
   const sm = summary(snap, now);
@@ -186,12 +201,9 @@ function renderPanel(snap, { width, rows, selected = -1, now = Date.now() } = {}
     ' · ' + t('rep_agents', sm.agents) + ' · ' + t('pn_running', running) + ' · ' + t('rep_done', sm.done) +
     ' · ' + fmtSecs(sm.secs);
   const lines = mainBox(text, width, true);
-  const k = Math.min(cardRows(rows), Math.floor((rows - lines.length - 1) / 6));
-  const cols = Math.min(3, snap.nodes.length);
-  const maxCards = Math.max(0, k) * cols;
-  lines.push(...cardGrid(snap.nodes, maxCards, { width, selected, now }));
-  const hidden = snap.nodes.length - Math.min(maxCards, snap.nodes.length);
-  if (hidden > 0) lines.push(C.gray(fit(t('tree_more', hidden), width)));
+  const L = panelLayout(snap.nodes.length, rows);
+  lines.push(...cardGrid(snap.nodes, L.shown, { width, selected, now }));
+  if (L.hidden > 0) lines.push(C.gray(fit(t('tree_more', L.hidden), width)));
   return lines.slice(0, Math.max(1, rows));
 }
 
@@ -224,9 +236,9 @@ function renderTree(snap, { width, rows = 24, selected = -1, now = Date.now() } 
     lines.push(C.gray(fit(t('tree_none'), width)));
   } else if (width >= 70) {
     const mt = fit(mainText(snap), width - 4);
-    lines.push(C.orange('╭' + '─'.repeat(width - 2) + '╮'));
+    lines.push(C.orange('╭' + '─'.repeat(Math.max(0, width - 2)) + '╮'));
     lines.push(C.orange('│ ') + C.bold(padTo(mt, width - 4)) + C.orange(' │'));
-    lines.push(C.orange('╰' + '─'.repeat(width - 2) + '╯'));
+    lines.push(C.orange('╰' + '─'.repeat(Math.max(0, width - 2)) + '╯'));
   } else {
     lines.push(C.orange(fit(mainText(snap), width)));
   }
@@ -310,5 +322,5 @@ function trackOut(out, store) {
 }
 
 module.exports = {
-  createStore, renderTree, renderCompact, trackOut, card, renderPanel, renderReport, summary, cardRows,
+  createStore, renderTree, renderCompact, trackOut, card, renderPanel, renderReport, summary, cardRows, panelHeight,
 };

@@ -383,3 +383,20 @@ test('renderCompact model', () => {
   const txt = strip(renderCompact(s.snapshot(), { width: 100, now: 2000 }).join('\n'));
   assert.match(txt, /some-model/); assert.match(txt, /⚠/);
 });
+
+test('panelHeight matches renderPanel; small rows; tiny widths', () => {
+  const { panelHeight } = require('../src/agent-tree');
+  for (const n of [0, 1, 3, 4, 6, 7, 12]) for (const rows of [28, 36, 40]) {
+    const out = renderPanel(mk(n).snapshot(), { width: 100, rows, now: 5000 });
+    assert.equal(panelHeight(n, rows), out.length, n + '/' + rows);
+    if (n === 0) assert.equal(out.length, 0);
+  }
+  const o10 = renderPanel(mk(2).snapshot(), { width: 100, rows: 10, now: 5000 });
+  assert.ok(o10.length <= 10); assert.equal((strip(o10.join(String.fromCharCode(10))).match(/╭/g) || []).length, 3);
+  for (const rows of [1, 2, 3, 4, 5, 8, 9]) {
+    const o = renderPanel(mk(7).snapshot(), { width: 100, rows, now: 5000 });
+    if (rows >= 4) assert.ok(o.length <= rows, 'rows ' + rows);
+    assert.equal(panelHeight(7, rows), o.length);
+  }
+  for (const w of [1, 2, 3]) assert.doesNotThrow(() => card(nodeOf({}), { width: w, now: 5000 }));
+});
