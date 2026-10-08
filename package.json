@@ -1,0 +1,23 @@
+{
+  "name": "syzercli",
+  "version": "3.1.0",
+  "description": "SyzerCLI — OpenRouter ve NVIDIA için çoklu API key havuzlu terminal ajanı",
+  "bin": {
+    "syzer": "bin/syzer.js",
+    "syzercli": "bin/syzer.js",
+    "SyzerCLI": "bin/syzer.js"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "scripts": {
+    "pack": "node scripts/pack.js",
+    "build:exe": "node scripts/build-exe.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yasinbalcik/SyzerCLI.git"
+  }
+}
