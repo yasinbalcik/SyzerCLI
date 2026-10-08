@@ -62,6 +62,8 @@ Makes Syzer a first-class agent inside [Orca](https://github.com/stablyai/orca):
 2. `syzer orca install --shortcut`
 3. Start Orca from the new **Orca (Syzer)** desktop shortcut; it re-checks the patch on every launch.
 
+**Closing Orca also closes its shells.** Orca deliberately keeps terminals alive in a background daemon, so `pwsh`/`claude` processes pile up after you quit. The patch closes every open terminal session when Orca quits normally (window **X** or tray icon → **Quit**). It cannot help if Orca is force-killed from Task Manager. Turn it off with `syzer orca config killShellsOnQuit off`; what it did is logged to `~/.syzercli/orca/quit.log`.
+
 `syzer orca status` shows whether the patch is current and which patch groups were skipped (a group is skipped, never half-applied, if a new Orca version changes the code it targets). `syzer orca restore` goes back to stock Orca. This is a community patch, unaffiliated with the Orca team; tested on Orca 1.4.x.
 
 ## More
