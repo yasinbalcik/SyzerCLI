@@ -17,7 +17,21 @@ const { mask, usable, addKeys } = require('./keys');
 const { freeModels } = require('./models');
 const { killAll } = require('./tools');
 const cmds = require('./cmds');
+const sessions = require('./sessions');
+const { loadBody } = require('./context');
+const git = require('./git');
 const { html } = require('./web-ui');
+
+// ---- çalışma alanları (klasörler): ~/.syzercli/workspaces.json ----
+const WS_FILE = path.join(config.DIR, 'workspaces.json');
+const wsLoad = () => { try { return JSON.parse(fs.readFileSync(WS_FILE, 'utf8')); } catch { return []; } };
+const wsSave = (list) => { try { fs.mkdirSync(config.DIR, { recursive: true }); fs.writeFileSync(WS_FILE, JSON.stringify(list)); } catch { /* önemsiz */ } };
+const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+function wsInfo(p) {
+  let branch = null; let dirty = 0;
+  if (git.isRepo(p)) { branch = git.git(p, ['rev-parse', '--abbrev-ref', 'HEAD']).out.trim() || null; dirty = git.status(p).split(String.fromCharCode(10)).filter(Boolean).length; }
+  return { path: p, name: path.basename(p) || p, branch, dirty, sessions: sessions.list(p).length };
+}
 
 const send = (res, status, body, type = 'application/json') => { res.writeHead(status, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store' }); res.end(typeof body === 'string' ? body : JSON.stringify(body)); };
 const readBody = (req) => new Promise((resolve, reject) => {
@@ -64,7 +78,9 @@ function start(cfg, { port = 8788, host = '127.0.0.1', open = true, cwd = proces
     emit({ type: 'confirm', id, kind, summary, preview: preview ? String(preview).replace(/\x1b\[[0-9;]*m/g, '').slice(0, 4000) : null });
   });
 
-  const s = createSession(cfg, { cwd, canAsk: true, confirm, out });
+  const mk = (dir) => createSession(cfg, { cwd: dir, canAsk: true, confirm, out });
+  let s = mk(cwd);
+  { const l = wsLoad(); if (!l.includes(cwd)) { l.unshift(cwd); wsSave(l); } }
 
   const state = () => ({
     version: pkg.version, provider: cfg.provider, providers: providers.list().map((p) => ({ id: p.id, name: p.name })),
@@ -98,14 +114,31 @@ function start(cfg, { port = 8788, host = '127.0.0.1', open = true, cwd = proces
 
       if (url.pathname === '/api/state') return send(res, 200, state());
       if (url.pathname === '/api/usage') return send(res, 200, await require('./usage-summary').summary().finally(() => providers.setCurrent(cfg.provider)));
+      if (url.pathname === '/api/skills') {
+        return send(res, 200, {
+          skills: s.ctx.skills.map((k) => ({ name: k.name, description: k.description || '' })),
+          commands: s.ctx.commands.map((k) => ({ name: k.name, description: k.description || '' })),
+          agents: require('./context').findAgents(s.cwd).map((a) => ({ name: a.name, description: a.description || '', builtin: !!a.builtin })),
+        });
+      }
+      if (url.pathname === '/api/workspaces') return send(res, 200, { current: s.cwd, list: wsLoad().filter(isDir).map(wsInfo) });
+      if (url.pathname === '/api/sessions') return send(res, 200, sessions.list(s.cwd).map((x) => ({ id: x.id, title: x.title, ts: x.ts, count: x.messages.length - 1, current: x.id === s.sessionId })));
       if (url.pathname === '/api/models') return send(res, 200, (await freeModels(url.searchParams.get('q') || '').catch(() => [])).slice(0, 200).map((m) => ({ id: m.id, ctx: m.ctx || null, tools: !!m.tools })));
 
       const body = req.method === 'POST' ? await readBody(req) : {};
 
       if (url.pathname === '/api/chat') {
         if (busy) return send(res, 409, { error: 'busy' });
-        const text = String(body.text || '').trim();
+        let text = String(body.text || '').trim();
         if (!text) return send(res, 400, { error: 'empty' });
+        // /beceri ve /komut açılımı (CLI'daki gibi)
+        const sm = text.match(/^\/([\w:.-]+)\s*([\s\S]*)$/);
+        if (sm) {
+          const command = s.ctx.commands.find((k) => k.name === sm[1]);
+          const skill = s.ctx.skills.find((k) => k.name === sm[1]);
+          if (command) text = loadBody(command.file, sm[2]);
+          else if (skill) text = `Use the skill "${skill.name}" (call use_skill first).${sm[2] ? `${String.fromCharCode(10).repeat(2)}Task: ${sm[2]}` : ''}`;
+        }
         busy = true;
         ctrl = new AbortController();
         res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -113,6 +146,7 @@ function start(cfg, { port = 8788, host = '127.0.0.1', open = true, cwd = proces
         res.on('close', () => { if (busy && ctrl) ctrl.abort(); });
         try {
           const r = await runTurn(s, text, ctrl.signal);
+          sessions.save(s);
           emit({ type: 'done', tokens: r.tokens, ms: r.ms, model: r.model, key: r.keyIndex + 1 });
         } catch (e) {
           emit({ type: ctrl.signal.aborted ? 'aborted' : 'error', text: e.message });
@@ -129,8 +163,24 @@ function start(cfg, { port = 8788, host = '127.0.0.1', open = true, cwd = proces
         if (r) { pending.delete(body.id); r(['yes', 'no', 'always', 'rule'].includes(body.answer) ? body.answer : 'no'); }
         return send(res, 200, { ok: true });
       }
+      if (url.pathname === '/api/workspace') {
+        if (busy) return send(res, 409, { error: 'busy' });
+        const p = body.path ? path.resolve(String(body.path)) : null;
+        if (body.action === 'add' || body.action === 'select') {
+          if (!p || !isDir(p)) return send(res, 400, { error: 'not a directory' });
+          const l = wsLoad(); if (!l.includes(p)) { l.push(p); wsSave(l); }
+          if (body.action === 'select' && p !== s.cwd) { killAll(s); s = mk(p); }
+        } else if (body.action === 'remove' && p && p !== s.cwd) wsSave(wsLoad().filter((x) => x !== p));
+        return send(res, 200, state());
+      }
+      if (url.pathname === '/api/session/resume') {
+        if (busy) return send(res, 409, { error: 'busy' });
+        const saved = sessions.list(s.cwd).find((x) => x.id === body.id);
+        if (saved) { s.messages = [s.messages[0], ...saved.messages.slice(1)]; s.sessionId = saved.id; }
+        return send(res, 200, state());
+      }
       if (url.pathname === '/api/abort') { if (ctrl) ctrl.abort(); return send(res, 200, { ok: true }); }
-      if (url.pathname === '/api/clear') { if (!busy) resetSession(s); return send(res, 200, state()); }
+      if (url.pathname === '/api/clear') { if (!busy) { resetSession(s); s.sessionId = require('./sessions').newId(); } return send(res, 200, state()); }
 
       if (url.pathname === '/api/settings') {
         if (busy) return send(res, 409, { error: 'busy' });

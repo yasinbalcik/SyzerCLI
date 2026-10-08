@@ -15,7 +15,7 @@ Kurulum: bu klasörde `npm link` → `syzer`
 
 ## Web arayüzü
 
-`syzer web [--port 8788] [--no-open]` veya sohbette `/web`: tarayıcıda sohbet (akış, araç çağrıları, onay butonları), sağlayıcı başına kullanım yüzdesi, key ekleme/silme/seçme, model/efor/izin/dil ayarı.
+`syzer web [--port 8788] [--no-open]` veya sohbette `/web`: Orca benzeri üç bölme. Sol: beceriler/komutlar/ajanlar (tıkla veya `/` ile), model-efor-izin-dil ayarı, key'ler ve kullanım yüzdesi. Orta: sohbet (akış, araç çağrıları, onay butonları). Sağ: çalışma alanları (klasör, git dalı) ve o klasörün kayıtlı oturumları (devam et).
 Yalnızca `127.0.0.1`'e bağlanır; ajan komut çalıştırabildiği için adres rastgele bir erişim token'ı içerir (çerezle korunur, Host/Origin denetlenir).
 
 ## Sağlayıcılar
