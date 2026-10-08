@@ -144,7 +144,7 @@ async function runTurn(session, userContent, signal) {
         const open = top && !nagged && (session.todos || []).filter((x) => x.status !== 'completed');
         if (open && open.length && step < maxSteps - 1) {
           nagged = true;
-          session.messages.push({ role: 'user', content: `[system reminder] Your todo list still has unfinished items: ${open.map((x) => `"${x.content}" (${x.status})`).join(', ')}. Finish them, or update the list with todo_write (mark done/remove) before ending your turn. Do not mention this reminder to the user.` });
+          session.messages.push({ role: 'user', content: `[system reminder] Your todo list still has unfinished items: ${open.map((x) => `"${x.content}" (${x.status})`).join(', ')}. Finish them (call run_plan for agent items), or update the list with todo_write (mark done/remove) before ending your turn. Do not mention this reminder to the user.` });
           continue;
         }
         break;
@@ -176,6 +176,13 @@ async function runTurn(session, userContent, signal) {
           finally { out.waiting(false); }
           batch.forEach((tc, i) => record(tc, results[i]));
           k = e;
+        } else if (calls[k].name === 'run_plan' && session.canSpawn) {
+          const tc = calls[k++];
+          out.tool(tc.name, label(tc));
+          out.waiting(true, t('agents_running', 1));
+          let r;
+          try { r = await require('./orchestra').runPlan(session, tc, signal); } finally { out.waiting(false); }
+          record(tc, r);
         } else {
           const tc = calls[k++];
           out.tool(tc.name, label(tc));

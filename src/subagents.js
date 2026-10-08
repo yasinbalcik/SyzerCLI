@@ -5,6 +5,7 @@ const { t } = require('./i18n');
 const { trunc } = require('./ui');
 
 const MAX_REPORT = 8000;
+const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'find_files', 'search_files', 'use_skill', 'web_fetch', 'web_search']);
 let counter = 0;
 
 // Eşzamanlı alt ajan sayısını sınırlar (free modellerde dakika limiti var)
@@ -17,7 +18,7 @@ async function limited(max, fn) {
 }
 
 // Alt ajan oturumu: kendi mesaj geçmişi var; izin/plan/geri alma yığını ana oturumla paylaşılır.
-function makeSub(parent, agent, label, id, run) {
+function makeSub(parent, agent, label, id, run, modelOverride) {
   const cfg = parent.cfg;
   const po = parent.out;
   return {
@@ -26,7 +27,7 @@ function makeSub(parent, agent, label, id, run) {
     ctx: parent.ctx,
     skills: parent.skills,
     agentName: agent.name,
-    model: agent.model || cfg.subagentModel || parent.model,
+    model: modelOverride || agent.model || cfg.subagentModel || parent.model,
     effort: cfg.subagentEffort || parent.effort,
     useTools: parent.useTools,
     canSpawn: false, // alt ajan alt ajan başlatamaz
@@ -82,7 +83,9 @@ async function spawn(parent, call, signal) {
   parent.runs.push(run);
   try {
     hooks.subagentStart({ id: `syz-${process.pid}-${id}`, kind: agent.name });
-    const sub = makeSub(parent, agent, label, id, run);
+    const sub = makeSub(parent, agent, label, id, run, a.model || null);
+    if (a.read_only) sub.allowedTools = new Set([...sub.allowedTools].filter((n) => READ_ONLY_TOOLS.has(n))); // yazma/komut araçları kaldırılır
+    if (a.max_steps) sub.maxSteps = Math.max(1, Math.min(40, a.max_steps | 0)); // orkestra yeniden denemesi daha geniş bütçe verir
     po.agentModel && po.agentModel(id, sub.model);
     const r = await limited(parent.cfg.subagentConcurrency || 3, () => {
       po.agentRun && po.agentRun(id);
@@ -97,6 +100,7 @@ async function spawn(parent, call, signal) {
     const body = lines.slice(0, 5).map((l) => '    ' + trunc(l, 110)).join('\n') + (lines.length > 5 ? `\n    ${t('sum_lines', lines.length - 5)}` : '');
     return {
       ok: true,
+      stopped: !!run.stopped, // adım sınırına çarpıp yarıda kesildi: rapor eksik olabilir
       output: report.length > MAX_REPORT ? report.slice(0, MAX_REPORT) + '\n…(truncated)' : report,
       ui: { summary: `${t('sub_summary', agent.name, r.toolCalls, r.tokens.toLocaleString(), secs)} · ${model}`, body },
     };
@@ -111,4 +115,4 @@ async function spawn(parent, call, signal) {
   }
 }
 
-module.exports = { spawn, makeSub };
+module.exports = { spawn, makeSub, READ_ONLY_TOOLS };

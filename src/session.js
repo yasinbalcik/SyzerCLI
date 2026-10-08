@@ -37,6 +37,7 @@ function resetSession(s) {
   s.sessionId = newId(); // yeni konuşma = yeni kayıt (eski oturum geçmişte kalır)
   s.runs = [];
   s.todos = [];
+  s.planDone = new Set();
 }
 
 module.exports = { createSession, resetSession };

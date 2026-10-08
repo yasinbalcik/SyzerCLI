@@ -23,12 +23,12 @@ test('splash i18n keys: filled, tr differs from en, de falls back to en', () => 
   } finally { setLang('en'); }
 });
 
-test('package version 3.25.0 and scripts.test lists every test file', () => {
+test('package version 3.26.0 and scripts.test lists every test file', () => {
   const pkg = require('../package.json');
-  assert.strictEqual(pkg.version, '3.25.0');
+  assert.strictEqual(pkg.version, '3.26.0');
   const lock = require('../package-lock.json');
-  assert.strictEqual(lock.version, '3.25.0');
-  assert.strictEqual(lock.packages[''].version, '3.25.0');
+  assert.strictEqual(lock.version, '3.26.0');
+  assert.strictEqual(lock.packages[''].version, '3.26.0');
   for (const f of fs.readdirSync(__dirname).filter((n) => n.endsWith('.test.js'))) {
     assert.ok(pkg.scripts.test.includes('test/' + f), f + ' missing from scripts.test');
   }

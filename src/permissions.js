@@ -7,7 +7,7 @@ const { globToRegex } = require('./glob');
 const CLAUDE_NAME = {
   read_file: 'Read', write_file: 'Write', edit_file: 'Edit', list_dir: 'LS', find_files: 'Glob',
   search_files: 'Grep', run_command: 'Bash', run_background: 'Bash', web_fetch: 'WebFetch', web_search: 'WebSearch',
-  spawn_agent: 'Task', use_skill: 'Skill', todo_write: 'TodoWrite',
+  spawn_agent: 'Task', run_plan: 'Task', use_skill: 'Skill', todo_write: 'TodoWrite',
 };
 
 const FILE_TOOLS = new Set(['read_file', 'write_file', 'edit_file', 'list_dir']);

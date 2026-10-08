@@ -225,7 +225,14 @@ function buildContext(cwd) {
   parts.push(
     'Subagents: for independent or exploratory subtasks, delegate with the spawn_agent tool. Each subagent starts with a ' +
       'fresh context and only sees the prompt you give it, so make the prompt self-contained. Call spawn_agent several ' +
-      'times in ONE response to run subagents in parallel. Do trivial work yourself. Available agents:\n' +
+      'times in ONE response to run subagents in parallel. Do trivial work yourself. ' +
+      'ORCHESTRA: for a big job you are the orchestrator. Write the plan with todo_write, giving each item an id, an agent, a self-contained prompt and depends_on ids ' +
+      '(independent items have none and run in parallel; later items get the reports of what they depend on). Optionally set a per-item model. ' +
+      'Subagents only see their own prompt: copy the user constraints (read-only, do not modify files, language, scope) into every agent prompt, and use read-only agents (explore, plan) for analysis items. ' +
+      'Plan FIRST: write the todo_write plan before reading files yourself, and never do an agent item yourself (it cannot be marked completed except by run_plan). ' +
+      'Then call run_plan; it runs the ready items in waves, retries a stalled agent once, and marks items completed. Afterwards verify the reports. ' +
+      'The final synthesis/report is YOURS: add it as a last item WITHOUT an agent (never delegate writing the final answer), and if one item needs the output of another, list it in depends_on. ' +
+      'Use this only when the work splits into 3+ separable pieces; otherwise just work directly. Available agents:\n' +
       agents.map((a) => `- ${a.name}: ${a.description.slice(0, 140)}`).join('\n'),
   );
   for (const f of files) parts.push(`--- ${f.path} ---\n${f.text}`);

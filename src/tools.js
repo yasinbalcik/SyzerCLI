@@ -49,12 +49,20 @@ const DEFS = [
     url: { type: 'string' }, max_chars: { type: 'integer', description: 'default 12000' },
   }, ['url']),
   fn('web_search', 'Search the web. Returns titles, URLs and snippets.', { query: { type: 'string' } }, ['query']),
-  fn('todo_write', 'Track a visible checklist ONLY for work with 3+ genuinely distinct steps, or when the user asks for a list. Do not use for single-step tasks, questions or chat. Send the FULL list each time; exactly one item in_progress until all are completed (then the list clears). Mark items completed immediately after finishing them.', {
+  fn('todo_write', 'Track a visible checklist ONLY for work with 3+ genuinely distinct steps, or when the user asks for a list. Do not use for single-step tasks, questions or chat. Send the FULL list each time; exactly one item in_progress until all are completed (then the list clears). Mark items completed immediately after finishing them. ORCHESTRA: give an item `agent` (+ `prompt`, optional `model`, `depends_on` ids) to assign it to a subagent; then call run_plan to execute all ready agent items in parallel waves. Items without `agent` are yours.', {
     todos: {
       type: 'array',
       items: {
         type: 'object',
-        properties: { content: { type: 'string' }, status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] } },
+        properties: {
+          id: { type: 'string', description: 'short unique id (default t1,t2,... by position)' },
+          content: { type: 'string' },
+          status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] },
+          agent: { type: 'string', description: 'subagent that does this item (explore, plan, general, or a custom agent)' },
+          prompt: { type: 'string', description: 'complete self-contained task for the subagent (defaults to content)' },
+          model: { type: 'string', description: 'optional model id for this subagent' },
+          depends_on: { type: 'array', items: { type: 'string' }, description: 'ids that must be completed first; their reports are passed to this agent' },
+        },
         required: ['content', 'status'],
       },
     },
@@ -87,13 +95,22 @@ const WORKER_DEF = fn(
   ['prompt'],
 );
 
+const RUN_PLAN_DEF = fn(
+  'run_plan',
+  'Execute the orchestra plan in your todo list: runs every pending item that has an `agent` and whose depends_on items are completed, in parallel waves, passing dependency reports to dependents. Marks items completed automatically and returns each report. Items without `agent` are left for you; verify the reports and merge them yourself.',
+  { read_only: { type: 'boolean', description: 'true: subagents get read-only tools (set it whenever the user said not to modify files; it is also auto-detected from their request)' } },
+  [],
+);
+
 // Oturumun görebileceği araçlar: alt ajanlar kısıtlı liste alır, ana ajan spawn_agent ve MCP araçlarını da görür
 function toolDefsFor(session) {
   let defs = DEFS;
   if (session.allowedTools) defs = defs.filter((d) => session.allowedTools.has(d.function.name));
   if (session.mcp && session.mcp.defs.length && (!session.allowedTools || session.allowedTools.has('mcp'))) defs = [...defs, ...session.mcp.defs];
   if (!session.canSpawn) return defs;
-  return require('./orca-workers').available() ? [...defs, SPAWN_DEF, WORKER_DEF] : [...defs, SPAWN_DEF];
+  const hasTodo = defs.some((d) => d.function.name === 'todo_write');
+  const extra = hasTodo ? [SPAWN_DEF, RUN_PLAN_DEF] : [SPAWN_DEF];
+  return require('./orca-workers').available() ? [...defs, ...extra, WORKER_DEF] : [...defs, ...extra];
 }
 
 const MUTATING = new Set(['write_file', 'edit_file', 'run_command', 'run_background']);
@@ -301,6 +318,7 @@ function describe(name, a, cwd) {
     case 'web_search': return a.query;
     case 'bg_output': case 'bg_stop': return `#${a.id}`;
     case 'todo_write': return `${(a.todos || []).length} items`;
+    case 'run_plan': return 'orchestra';
     case 'spawn_syzer': return `worker: ${a.title || String(a.prompt || '').slice(0, 50)}`;
     case 'spawn_agent': return `${a.agent || 'general'}: ${a.description || String(a.prompt || '').slice(0, 50)}`;
     default:
@@ -310,33 +328,77 @@ function describe(name, a, cwd) {
 }
 
 const TODO_STATUS = ['pending', 'in_progress', 'completed'];
+const DEP_WORDS = /(depends? on|depending on|based on (the )?(results?|reports?|output|findings)|after (the )?(other|previous|first)|using the (results?|reports?|output) of)|bağlı|bağımlı|önceki (adım|madde|sonuç|rapor)|(sonuçlar|raporlar|bulgular)ına göre/i;
 
 // Katı doğrulama: model neyi düzelteceğini hata mesajından anlar
-function validateTodos(todos) {
+function validateTodos(todos, planDone = null) {
   if (!Array.isArray(todos) || !todos.length) return { error: 'todos must be a non-empty array of {content, status}.' };
   const list = [];
   const seen = new Set();
+  const ids = new Set();
   for (const [i, x] of todos.entries()) {
     const content = String((x && x.content) || '').trim();
     if (!content) return { error: `todos[${i}] has empty content.` };
     if (!x || !TODO_STATUS.includes(x.status)) return { error: `todos[${i}] has invalid status "${x && x.status}"; use pending, in_progress or completed.` };
     if (seen.has(content.toLowerCase())) return { error: `todos[${i}] duplicates another item ("${content}").` };
     seen.add(content.toLowerCase());
-    list.push({ content, status: x.status });
+    const id = String(x.id || `t${i + 1}`).trim();
+    if (ids.has(id)) return { error: `todos[${i}] reuses id "${id}"; ids must be unique.` };
+    ids.add(id);
+    const item = { id, content, status: x.status };
+    if (x.agent) item.agent = String(x.agent).trim();
+    if (x.model) item.model = String(x.model).trim();
+    if (x.prompt) item.prompt = String(x.prompt);
+    if (Array.isArray(x.depends_on) && x.depends_on.length) item.depends_on = x.depends_on.map((d) => String(d).trim());
+    if (item.depends_on && !item.agent) return { error: `todos[${i}] ("${id}") has depends_on but no agent; only agent items are scheduled by run_plan.` };
+    list.push(item);
   }
+  // Metin başka maddelerin çıktısına dayandığını söylüyor ama depends_on boş: aynı dalgada girdisiz çalışır
+  for (const x of list) {
+    if (x.agent && !x.depends_on && DEP_WORDS.test(`${x.content} ${x.prompt || ''}`)) {
+      return { error: `item "${x.id}" says it depends on other items but has no depends_on. Set depends_on to their ids (give items explicit short ids), or reword it if it is really independent.` };
+    }
+  }
+  // bağımlılıklar: var olan id'ler, kendine bağlanma yok, döngü yok
+  const byId = new Map(list.map((x) => [x.id, x]));
+  for (const x of list) for (const d of x.depends_on || []) {
+    if (!byId.has(d)) return { error: `item "${x.id}" depends on unknown id "${d}".` };
+    if (d === x.id) return { error: `item "${x.id}" depends on itself.` };
+  }
+  const state = new Map();
+  const cyc = (id) => {
+    if (state.get(id) === 2) return false;
+    if (state.get(id) === 1) return true;
+    state.set(id, 1);
+    for (const d of byId.get(id).depends_on || []) if (cyc(d)) return true;
+    state.set(id, 2);
+    return false;
+  };
+  for (const x of list) if (cyc(x.id)) return { error: `dependency cycle involving "${x.id}".` };
+
+  // Ajan atanmış madde yalnızca run_plan ile tamamlanır; model kendi yaptıysa `agent` alanını kaldırmalı
+  if (planDone) {
+    const cheat = list.find((x) => x.agent && x.status === 'completed' && !planDone.has(x.id));
+    if (cheat) return { error: `item "${cheat.id}" has agent "${cheat.agent}" but was not run by run_plan. Do not do agent items yourself: leave it pending and call run_plan, or remove its "agent" if you really did it yourself.` };
+  }
+  const orchestrated = list.some((x) => x.agent); // run_plan paralel çalıştırır: birden çok in_progress olabilir
   const active = list.filter((x) => x.status === 'in_progress').length;
   const finished = list.every((x) => x.status === 'completed');
-  if (active > 1) return { error: `${active} items are in_progress; keep exactly one in_progress.` };
-  if (!active && !finished) return { error: 'No item is in_progress; mark the one you are working on as in_progress.' };
-  return { list };
+  if (!orchestrated) {
+    if (active > 1) return { error: `${active} items are in_progress; keep exactly one in_progress.` };
+    if (!active && !finished) return { error: 'No item is in_progress; mark the one you are working on as in_progress.' };
+  }
+  return { list, orchestrated };
 }
 
 // compact: biten maddeler tek satıra katlanır (her güncellemede ekranı doldurmasın)
 function renderTodos(todos, compact = false) {
+  const tag = (x) => (x.agent ? C.gray(`  [${x.agent}${x.model ? ' · ' + String(x.model).split('/').pop().replace(':free', '') : ''}${x.depends_on ? ' ← ' + x.depends_on.join(',') : ''}]`) : '');
   const line = (x) => {
-    if (x.status === 'completed') return `    ${C.green('☑')} ${C.dim(x.content)}`;
-    if (x.status === 'in_progress') return `    ${C.cyan('▶')} ${C.bold(x.content)}`;
-    return `    ${C.gray('☐')} ${x.content}`;
+    if (x.status === 'completed') return `    ${C.green('☑')} ${C.dim(x.content)}${tag(x)}`;
+    if (x.status === 'in_progress') return `    ${C.cyan('▶')} ${C.bold(x.content)}${tag(x)}`;
+    if (x.error) return `    ${C.red('✗')} ${x.content}${tag(x)} ${C.red(String(x.error).slice(0, 60))}`;
+    return `    ${C.gray('☐')} ${x.content}${tag(x)}`;
   };
   const done = todos.filter((x) => x.status === 'completed');
   if (!compact || done.length < 3 || done.length === todos.length) return todos.map(line).join('\n');
@@ -511,18 +573,20 @@ async function runTool(name, a, call, session, allowedByRule) {
         return { ok: true, output: text, ui: { summary: t('sum_found', text.split('\n').filter((l) => /^\d+\./.test(l)).length) } };
       }
       case 'todo_write': {
-        const v = validateTodos(a.todos);
+        const v = validateTodos(a.todos, session.planDone || new Set());
         if (v.error) return { ok: false, output: v.error, ui: { summary: v.error } };
         const list = v.list;
         const done = list.filter((x) => x.status === 'completed').length;
         const cur = list.find((x) => x.status === 'in_progress');
         const next = list.find((x) => x.status === 'pending');
+        const planned = v.orchestrated && list.some((x) => x.agent && x.status === 'pending');
         if (done === list.length) {
           session.todos = []; // hepsi bitti: liste temizlenir
+          session.planDone = new Set();
           return { ok: true, output: `All ${done} tasks completed. Todo list cleared.`, ui: { summary: `${done}/${done}`, body: renderTodos(list, true) } };
         }
         session.todos = list;
-        const state = cur ? `now: "${cur.content}"` : `next: "${next.content}" (mark it in_progress before starting)`;
+        const state = planned ? 'agent items are pending: call run_plan to execute the ready ones' : cur ? `now: "${cur.content}"` : `next: "${next.content}" (mark it in_progress before starting)`;
         return { ok: true, output: `Todo list updated: ${done}/${list.length} done, ${state}.`, ui: { summary: `${done}/${list.length}`, body: renderTodos(list, true) } };
       }
       case 'use_skill': {
@@ -538,4 +602,4 @@ async function runTool(name, a, call, session, allowedByRule) {
   }
 }
 
-module.exports = { DEFS, SPAWN_DEF, toolDefsFor, execute, describe, MUTATING, undoLast, killAll, renderTodos, validateTodos, rootOf, htmlToText, webSearch, webFetch };
+module.exports = { DEFS, SPAWN_DEF, RUN_PLAN_DEF, toolDefsFor, execute, describe, MUTATING, undoLast, killAll, renderTodos, validateTodos, rootOf, htmlToText, webSearch, webFetch };
