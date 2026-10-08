@@ -105,6 +105,7 @@ class Editor {
     if (key.name === 'paste-start') { this.pasting = true; this.pasteBuf = ''; return; }
     if (key.name === 'paste-end') { this.pasting = false; if (this.mode === 'line') this._paste(this.pasteBuf); return; }
     if (this.pasting) { this.pasteBuf += str ?? ''; return; }
+    if (this.dock && this.mode === 'line' && this.dock.handleKey(str, key)) return; // alt ajan listesi / canlı görünüm
 
     if (this.mode === 'idle') {
       if (key.ctrl && key.name === 'c' && this.onInterrupt) this.onInterrupt();

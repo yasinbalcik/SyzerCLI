@@ -57,16 +57,27 @@ function makeOut() {
   const agents = new Map(); // çalışan alt ajanlar: id → { label, action }
   let paused = false;
   const agentRows = () => {
-    const list = [...agents.values()];
+    const list = [...agents.entries()].map(([id, e]) => ({ ...e, id }));
     const cols = (process.stdout.columns || 100) - 4;
     return list.map((e, i) => {
+      const runs = out.getRuns ? out.getRuns() : [];
+      const no = runs.findIndex((r) => r.id === e.id) + 1;
       const mark = i === list.length - 1 ? '└' : '├';
       const secs = Math.floor((Date.now() - e.t0) / 1000);
       const tail = C.gray(` · ${e.steps} ${t('lbl_steps')} · ${secs}s`);
       const room = Math.max(20, cols - vlen(tail) - 6);
       const label = trunc(e.label, 40);
       const action = trunc(String(e.action).replace(/\s+/g, ' '), Math.max(8, room - vlen(label) - 2));
-      return `  ${C.gray(mark)} ${C.bold(label)}  ${C.gray(action)}${tail}`;
+      return `  ${C.gray(mark)} ${no ? C.orange(`#${no} `) : ''}${C.bold(label)}  ${C.gray(action)}${tail}`;
+    });
+  };
+  const agentObjs = () => {
+    const runs = out.getRuns ? out.getRuns() : [];
+    return [...agents.entries()].map(([id, e]) => {
+      const ix = runs.findIndex((r) => r.id === id);
+      const run = ix >= 0 ? runs[ix] : null;
+      const kind = String(e.label).split(':')[0];
+      return { id, no: ix + 1, kind, label: String(e.label).slice(kind.length + 1).trim(), t0: e.t0, steps: e.steps, get tokens() { return Math.round(((run && run.chars) || 0) / 4); } };
     });
   };
   const out = {
@@ -109,7 +120,7 @@ function makeOut() {
     agentUpdate(id, action, steps) { const e = agents.get(id); if (e) { e.action = action; if (steps != null) e.steps = steps; out.refresh(); } },
     agentDone(id) { agents.delete(id); out.refresh(); },
     refresh() {
-      if (dock && dock.active) { dock.setAgents(agentRows()); return; }
+      if (dock && dock.active) { dock.setAgents(agentObjs()); return; }
       if (paused || !agents.size) return;
       out.waiting(true, t('agents_running', agents.size));
       spin.label(t('agents_running', agents.size));
@@ -247,6 +258,8 @@ async function start(cfg, opts = {}, io = {}) {
   let webUi = null;
   editor.onInterrupt = () => { if (ctrl) ctrl.abort(); };
   const dock = new Dock({ editor });
+  s.out.getRuns = () => s.runs || [];
+  dock.getRun = (id) => (s.runs || []).find((r) => r.id === id) || null;
 
   const doCompact = async (hint) => {
     console.log(C.gray(t('compact_start')));
@@ -454,6 +467,7 @@ async function start(cfg, opts = {}, io = {}) {
     }
   };
 
+  dock.live = (line) => slash(line);
   editor.start();
   try {
     while (true) {

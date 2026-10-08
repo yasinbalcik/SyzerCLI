@@ -50,11 +50,11 @@ function makeSub(parent, agent, label, id, run) {
     confirm: (kind, summary, preview) => parent.confirm(`${agent.name}:${kind}`, summary, preview),
     out: {
       waiting() {},
-      thinking() { po.agentUpdate && po.agentUpdate(id, '…'); },
-      text() {},
+      thinking(chunk) { if (run) run.chars += String(chunk || '').length; po.agentUpdate && po.agentUpdate(id, '…'); },
+      text(chunk) { if (run) { const c = String(chunk || ''); run.chars += c.length; run.live = (run.live + c).slice(-6000); } },
       endText() {},
       tool(name, summary) { if (run) run.steps.push({ tool: name, summary: String(summary).slice(0, 300) }); po.agentUpdate && po.agentUpdate(id, `${name}(${trunc(String(summary).replace(/\s+/g, ' '), 48)})`, run ? run.steps.length : undefined); },
-      toolResult(ok, text, ui) { if (run && run.steps.length) { const st = run.steps[run.steps.length - 1]; st.ok = ok; st.result = (ui && ui.summary ? ui.summary : String(text)).slice(0, 600); } },
+      toolResult(ok, text, ui) { if (run && run.steps.length) { const st = run.steps[run.steps.length - 1]; st.ok = ok; st.result = (ui && ui.summary ? ui.summary : String(text)).slice(0, 600); run.chars += String(text || '').length; } },
       warn(msg) { po.warn(`[${label}] ${msg}`); },
     },
   };
@@ -78,7 +78,7 @@ async function spawn(parent, call, signal) {
   const hooks = require('./orca-hooks');
   hooks.subagentStart({ id: `syz-${process.pid}-${id}`, kind: agent.name });
   const t0 = Date.now();
-  const run = { id, label, agent: agent.name, prompt: a.prompt, steps: [], report: '', ok: false };
+  const run = { id, label, agent: agent.name, prompt: a.prompt, steps: [], report: '', live: '', chars: 0, ok: false };
   parent.runs = parent.runs || [];
   parent.runs.push(run);
   try {

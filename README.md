@@ -23,7 +23,7 @@ Kurulum: bu klasörde `npm link` → `syzer`
 
 ## Giriş her zaman açık
 
-Ajan çalışırken terminalin altında sabit bir alan kalır: durum satırı, çalışan alt ajanların canlı satırları (görev, son araç, adım, süre), sıradaki mesajlar ve giriş satırı. Çalışırken yeni mesaj yazıp Enter'a basarsan sıraya girer ve tur bitince çalışır; Ctrl+C yazılan metni siler, boşsa yanıtı durdurur. Kapatmak için `SYZER_NO_DOCK=1`.
+Ajan çalışırken terminalin altında sabit bir alan kalır: durum satırı, çalışan alt ajanların canlı satırları (görev, son araç, adım, süre), sıradaki mesajlar ve giriş satırı. Çalışırken yeni mesaj yazıp Enter'a basarsan sıraya girer ve tur bitince çalışır; Ctrl+C yazılan metni siler, boşsa yanıtı durdurur. Alt ajanlar çalışırken girişin altında `main` + ajan listesi görünür (ad, görev, süre, token); giriş boşken **↓ / ←** ile listeye geç, **↑↓** ile seç, **Enter** ile ajanın canlı içeriğini (görev, her araç çağrısı ve sonucu, canlı çıktı, rapor) tam ekran aç, **Esc / ←** ile dön. Tur sürerken `/run <no>` de hemen çalışır. Kapatmak için `SYZER_NO_DOCK=1`.
 
 ## Alt ajanlar ve Orca işçileri
 
