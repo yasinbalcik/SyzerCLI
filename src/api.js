@@ -23,24 +23,67 @@ async function errorFrom(res) {
   return new KeyError(res.status, msg);
 }
 
+// Takılma (idle) sınırı: bu kadar süre hiç veri gelmezse istek iptal edilir
+const STALL_MS = 90000;
+
+function stallLimit(stallMs) {
+  if (Number.isInteger(stallMs) && stallMs > 0) return stallMs;
+  const env = Number(process.env.SYZER_STALL_MS);
+  return Number.isInteger(env) && env > 0 ? env : STALL_MS;
+}
+
 // Tek bir key ile stream isteği. İçerik/araç çağrısı gelmeden önceki hatalar KeyError olarak fırlar.
-async function chatStream({ key, model, messages, tools, effort, signal, onText, onThinking, provider = providers.current() }) {
+async function chatStream({ key, model, messages, tools, effort, signal, onText, onThinking, stallMs, provider = providers.current() }) {
   const body = { model, messages, stream: true, stream_options: { include_usage: true } };
   if (effort && effort !== 'auto') Object.assign(body, provider.reasoning(effort));
   if (tools && tools.length) body.tools = tools;
 
+  // Kullanıcı sinyali + iç watchdog tek bir AbortController'da birleşir
+  const limit = stallLimit(stallMs);
+  const ctl = new AbortController();
+  let started = false;
+  let stalled = false;
+  let timer = null;
+  const onUserAbort = () => ctl.abort();
+  if (signal) { if (signal.aborted) ctl.abort(); else signal.addEventListener('abort', onUserAbort, { once: true }); }
+  const arm = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { stalled = true; ctl.abort(); }, limit);
+  };
+  const stallError = () => {
+    const e = new KeyError(504, `stalled: no data for ${Math.round(limit / 1000)}s`);
+    if (started) e.status = 0; // kısmi çıktı zaten iletildi → yeniden denenmez
+    return e;
+  };
+  const cleanup = () => {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', onUserAbort);
+  };
+
+  try {
+    return await run();
+  } catch (e) {
+    if (stalled && !(signal && signal.aborted)) throw stallError();
+    throw e;
+  } finally {
+    cleanup();
+  }
+
+  async function run() {
   let res;
+  arm();
   try {
     res = await fetch(`${provider.base}/chat/completions`, {
       method: 'POST',
-      signal,
+      signal: ctl.signal,
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...provider.headers() },
       body: JSON.stringify(body),
     });
   } catch (e) {
-    if (e.name === 'AbortError' || (signal && signal.aborted)) throw e;
+    if (e.name === 'AbortError' || (signal && signal.aborted) || stalled) throw e;
     throw new KeyError(503, `network: ${(e.cause && (e.cause.code || e.cause.message)) || e.message}`); // geçici ağ hatası → yeniden dene / yedek model
   }
+  arm(); // header geldi
   if (!res.ok) throw await errorFrom(res);
 
   const decoder = new TextDecoder();
@@ -48,7 +91,6 @@ async function chatStream({ key, model, messages, tools, effort, signal, onText,
   let buf = '';
   let content = '';
   let usage = null;
-  let started = false;
 
   const handle = (data) => {
     let j;
@@ -74,6 +116,7 @@ async function chatStream({ key, model, messages, tools, effort, signal, onText,
   };
 
   for await (const chunk of res.body) {
+    arm(); // her parça (keep-alive yorumları dahil) zamanlayıcıyı sıfırlar
     buf += decoder.decode(chunk, { stream: true });
     let idx;
     while ((idx = buf.indexOf('\n')) >= 0) {
@@ -90,6 +133,7 @@ async function chatStream({ key, model, messages, tools, effort, signal, onText,
   function finish() {
     const toolCalls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${Date.now()}_${i}` }));
     return { content, toolCalls, usage };
+  }
   }
 }
 
