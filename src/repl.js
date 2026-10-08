@@ -15,7 +15,7 @@ const { undoLast } = require('./tools');
 const providers = require('./providers');
 const { Editor } = require('./input');
 const { Dock } = require('./dock');
-const { createStore, trackOut } = require('./agent-tree');
+const { createStore, trackOut, renderTree } = require('./agent-tree');
 const { McpManager } = require('./mcp');
 const { killAll } = require('./tools');
 const compactMod = require('./compact');
@@ -26,7 +26,7 @@ const cmds = require('./cmds');
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const BUILTIN = ['help', 'model', 'models', 'usage', 'keys', 'lang', 'perm', 'skills', 'context', 'clear', 'exit',
   'effort', 'fallback', 'undo', 'resume', 'stats', 'plan', 'go', 'agents', 'subagent',
-  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web', 'runs', 'run'];
+  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web', 'runs', 'run', 'tree'];
 const LABEL = { read_file: 'Read', write_file: 'Write', edit_file: 'Update', list_dir: 'List', find_files: 'Find', search_files: 'Search', run_command: 'Run', use_skill: 'Skill', spawn_agent: 'Agent' };
 const PLAN_PREFIX = '[PLAN MODE] Use read-only tools only. Do NOT modify anything. Investigate, then answer with a concise numbered plan and ask for approval at the end.\n\n';
 
@@ -381,8 +381,17 @@ async function start(cfg, opts = {}, io = {}) {
         console.log(C.gray('Ayrıntı için: /run <no>'));
         return;
       }
+      case 'tree': {
+        if (dock.active && typeof dock.openTree === 'function') { dock.openTree(); return; }
+        try {
+          const snap = tree.snapshot();
+          if (!snap.nodes.length) { console.log(C.gray(t('tree_none'))); return; }
+          console.log(renderTree(snap, { width: process.stdout.columns || 100, rows: 40 }).join('\n'));
+        } catch (e) { console.log(C.gray(`tree: ${e.message}`)); }
+        return;
+      }
       case 'run': {
-        const r = (s.runs || [])[parseInt(arg, 10) - 1];
+        const r =(s.runs || [])[parseInt(arg, 10) - 1];
         if (!r) { console.log(C.yellow('Kullanım: /run <no>  (liste: /runs)')); return; }
         console.log(`${C.bold(r.agent)} ${C.gray(r.label)}${r.model ? C.gray(` · ${r.model}`) : ''}${r.secs ? C.gray(` · ${r.secs}s`) : ''}`);
         console.log(`${C.cyan('Görev:')}\n${String(r.prompt).split('\n').map((l) => '  ' + l).join('\n')}`);

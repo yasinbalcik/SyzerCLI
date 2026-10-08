@@ -5,7 +5,8 @@
 // Normal çıktı kaydırma bölgesinde (üstte) akmaya devam eder; kullanıcı yeni mesajı yazıp sıraya koyabilir.
 // Alt ajan listesi: giriş boşken ↓ / ← ile listeye geç, ↑↓ ile seç, Enter ile ajanın CANLI içeriğini aç (tam ekran), Esc/← ile dön.
 const { C, vlen, trunc } = require('./ui');
-const { renderCompact } = require('./agent-tree');
+const { renderCompact, renderTree } = require('./agent-tree');
+const { t } = require('./i18n');
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const ESC = '\x1b';
@@ -28,7 +29,7 @@ class Dock {
     this.getTree = null; // () => ağaç snapshot (yoksa eski satırlar)
     this.live = null; // (line) => Promise: /run, /runs tur sürerken hemen çalışır
     this.sel = -1; // -1: giriş odakta · 0: main · 1..n: ajan
-    this.viewing = null; // { id, scroll }
+    this.viewing = null; // { kind: 'agent'|'tree', id?, scroll, sel? }
     this.paused = false;
     this.h = 0;
     this.frame = 0;
@@ -121,7 +122,7 @@ class Dock {
   // Düzenleyici kullanıcı mesajını gönderdi
   submit(result) {
     const line = String(result.text || '').trim();
-    if (this.live && /^\/runs?(\s|$)/.test(line)) { // alt ajanı incele: tur sürerken hemen çalışır
+    if (this.live && /^\/(runs?|tree)(\s|$)/.test(line)) { // alt ajanı incele: tur sürerken hemen çalışır
       Promise.resolve(this.live(line)).catch(() => {}).then(() => this.draw());
       return;
     }
@@ -132,6 +133,20 @@ class Dock {
 
   // Klavye: true dönerse tuş tüketildi
   handleKey(str, key = {}) {
+    if (this.viewing && this.viewing.kind === 'tree') {
+      const v = this.viewing;
+      switch (key.name) {
+        case 'escape': case 'left': case 'q': this.closeView(); return true;
+        case 'up': v.sel = Math.max(0, v.sel - 1); this.drawView(); return true;
+        case 'down': v.sel = Math.min(this.agents.length - 1, v.sel + 1); this.drawView(); return true;
+        case 'return': case 'enter': case 'right':
+          if (this.agents[v.sel]) this.openView(this.agents[v.sel]);
+          return true;
+        default:
+          if (key.ctrl && key.name === 'c') { this.closeView(); return false; }
+          return true;
+      }
+    }
     if (this.viewing) {
       switch (key.name) {
         case 'escape': case 'left': case 'q': this.closeView(); return true;
@@ -166,10 +181,8 @@ class Dock {
   }
 
   // ---------- canlı ajan görünümü (alternatif ekran) ----------
-  openView(agent) {
-    if (!agent) return;
-    this.viewing = { id: agent.id, scroll: 0 };
-    // ana çıktıyı tamponla (görünüm sırasında alternatif ekranı bozmasın)
+  // alternatif ekrana geç + ana çıktıyı tamponla (ajan ve ağaç görünümü paylaşır)
+  enterAlt() {
     this._buf = [];
     this._origOut = this.out.write.bind(this.out);
     this._origErr = process.stderr.write.bind(process.stderr);
@@ -177,8 +190,29 @@ class Dock {
     this.out.write = hold(this._origOut);
     process.stderr.write = hold(this._origErr);
     this._origOut(`${ESC}[?1049h${ESC}[2J${ESC}[H${ESC}[?25l`);
+  }
+
+  openView(agent) {
+    if (!agent) return;
+    const inAlt = !!(this.viewing && this._origOut); // ağaçtan geçiş: alt ekran ve tampon aynen kalır
+    clearInterval(this.viewTimer);
+    this.viewing = { kind: 'agent', id: agent.id, scroll: 0 };
+    if (!inAlt) this.enterAlt(); else this._origOut(`${ESC}[2J${ESC}[H`);
     this.viewTimer = setInterval(() => this.drawView(), 400);
     this.drawView();
+  }
+
+  openTree() {
+    if (this.viewing) return;
+    this.viewing = { kind: 'tree', scroll: 0, sel: this.agents.length ? 0 : -1 };
+    this.enterAlt();
+    this.viewTimer = setInterval(() => this.drawView(), 1000);
+    this.drawView();
+  }
+
+  treeSnap() {
+    try { const s = this.getTree && this.getTree(); if (s && Array.isArray(s.nodes)) return s; } catch { /* önemsiz */ }
+    return { main: {}, nodes: [], log: [] };
   }
 
   closeView() {
@@ -186,6 +220,7 @@ class Dock {
     clearInterval(this.viewTimer);
     this.viewing = null;
     const orig = this._origOut;
+    this._origOut = null;
     this.out.write = orig;
     process.stderr.write = this._origErr;
     const bottom = this.rows - this.h;
@@ -195,8 +230,14 @@ class Dock {
     this.draw();
   }
 
-  viewLines(width) {
-    const a = this.agents.find((x) => x.id === this.viewing.id);
+  viewLines(width, rows = 40) {
+    if (this.viewing.kind === 'tree') {
+      const snap = this.treeSnap();
+      const ag = this.agents[this.viewing.sel];
+      const selected = ag ? snap.nodes.findIndex((n) => n.id === ag.id) : -1;
+      return renderTree(snap, { width, rows, selected, now: Date.now() });
+    }
+    const a =this.agents.find((x) => x.id === this.viewing.id);
     const run = this.getRun ? this.getRun(this.viewing.id) : null;
     const lines = [];
     const wrap = (text, indent = '') => {
@@ -229,15 +270,19 @@ class Dock {
     if (!this.viewing || !this._origOut) return;
     const cols = this.out.columns || 80;
     const rows = this.out.rows || 24;
-    const all = this.viewLines(cols - 2);
     const room = rows - 2;
+    const tree = this.viewing.kind === 'tree';
+    let all;
+    try { all = this.viewLines(cols - 2, room); } catch { all = []; }
+    if (tree) all = all.slice(0, room);
     const maxScroll = Math.max(0, all.length - room);
     this.viewing.scroll = Math.min(this.viewing.scroll, maxScroll);
     const start = Math.max(0, all.length - room - this.viewing.scroll);
     const body = all.slice(start, start + room);
     let s = `${ESC}[H`;
     for (let i = 0; i < room; i++) s += `${ESC}[2K${body[i] || ''}${i < room - 1 ? NL : ''}`;
-    s += `${ESC}[${rows};1H${ESC}[2K${C.gray(`esc/← geri · ↑↓ kaydır · end: sona git${this.viewing.scroll ? `  (${this.viewing.scroll} satır yukarıda)` : ''}`)}`;
+    const hint = tree ? t('tree_hint') : `esc/← geri · ↑↓ kaydır · end: sona git${this.viewing.scroll ? `  (${this.viewing.scroll} satır yukarıda)` : ''}`;
+    s += `${ESC}[${rows};1H${ESC}[2K${C.gray(hint)}`;
     this._origOut(s);
   }
 

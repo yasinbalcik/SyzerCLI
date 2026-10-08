@@ -3,6 +3,7 @@
 // Sonradan eklenen metinler. i18n.js içinde dil tablolarına birleştirilir.
 module.exports = {
   en: {
+    tree_hint: 'esc back · ↑↓ select · enter open agent',
     tree_none: 'no subagents yet', tree_log: 'event log', tree_more: '+{0} more',
     agents_running: '{0} agent(s) working',
     sub_summary: '{0} · {1} tool call(s) · {2} tok · {3}s',
