@@ -49,7 +49,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-p' || a === '--print') f.print = true;
-    else if (a === '-y' || a === '--yes') f.yes = true;
+    else if (a === '-y' || a === '--yes' || a === '--unrestricted') f.yes = true; // --unrestricted: Orca'nın "bypass permissions" bayrağı
     else if (a === '--json') f.json = true;
     else if (a === '--no-tools') f.noTools = true;
     else if (a === '--no-check') f.noCheck = true;
@@ -71,6 +71,7 @@ function parseArgs(argv) {
     else if (a === '--file' || a === '-f') f.file = argv[++i];
     else if (a === '-h' || a === '--help') f.help = true;
     else if (a === '-v' || a === '--version') f.version = true;
+    else if (/^--[a-z]/i.test(a)) console.error(`Unknown flag ${a} (ignored)`);
     else f.rest.push(a);
   }
   return f;
