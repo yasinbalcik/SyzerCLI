@@ -69,7 +69,7 @@ const SPAWN_DEF = fn(
   {
     agent: { type: 'string', description: 'agent name (default: general)' },
     description: { type: 'string', description: 'short 3-6 word label' },
-    prompt: { type: 'string', description: 'complete task instructions; the subagent sees nothing else' },
+    prompt: { type: 'string', description: 'complete, self-contained task: goal, relevant file paths, constraints and the exact output format wanted; the subagent sees nothing else' },
   },
   ['prompt'],
 );

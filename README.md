@@ -26,6 +26,12 @@ Kurulum: bu klasörde `npm link` → `syzer`
 - `spawn_agent`: ana oturumun içinde çalışan alt ajanlar (paralel). Ayrıntıları görmek için sohbette `/runs` (liste) ve `/run <no>` (görev, her araç çağrısı ve sonucu, rapor); web arayüzünde alt ajan kartına tıklayınca açılır.
 - `spawn_syzer` (yalnızca Orca içinde): her görev **ayrı bir Orca terminalinde çalışan bağımsız bir Syzer** olur; sekmesinden canlı izlenebilir, sonuç ana ajana rapor olarak döner. Tek seferlik kullanım: `syzer -y --prompt-file görev.txt --out sonuc.txt`.
 
+## Dayanıklılık
+
+- Sunucu yoğunluğu (5xx) ya da geçici ağ hatasında aynı key'le 2 kez denenir, sonra **otomatik olarak yedek modele** geçilir (`/fallback`). Yoğun model 5 dakika atlanır (süreçler arasında paylaşılır), sonraki turlar doğrudan sağlam modelle başlar.
+- Orca işçileri farklı key'lerle başlar, ana oturumun izin modunu devralır (tam otomat değilse salt okunur), başarısız olursa bir kez yeniden denenir ve hata ana ajana açıkça bildirilir. `SYZER_WORKER_CLOSE=1`: bitince sekme kapanır.
+- Alt ajanlar raporu ana oturumun dilinde yazar.
+
 ## Web arayüzü
 
 `syzer web [--port 8788] [--no-open]` veya sohbette `/web`: Orca benzeri üç bölme. Sol: beceriler/komutlar/ajanlar (tıkla veya `/` ile), model-efor-izin-dil ayarı, key'ler ve kullanım yüzdesi. Orta: sohbet (akış, araç çağrıları, onay butonları). Sağ: çalışma alanları (klasör, git dalı) ve o klasörün kayıtlı oturumları (devam et).

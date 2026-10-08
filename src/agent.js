@@ -11,6 +11,16 @@ const hooks = require('./orca-hooks');
 
 const MAX_STEPS = 30;
 
+// Yoğun (5xx/ağ) model kısa süre atlanır; süreçler (alt ajan, Orca işçileri) arasında dosyadan paylaşılır
+const BUSY_MS = 5 * 60 * 1000;
+const busyFile = () => require('path').join(require('./config').DIR, 'busy-models.json');
+function readBusy() {
+  try { const j = JSON.parse(require('fs').readFileSync(busyFile(), 'utf8')); const now = Date.now(); return Object.fromEntries(Object.entries(j).filter(([, ts]) => ts > now)); } catch { return {}; }
+}
+function markBusy(model) {
+  try { const b = readBusy(); b[model] = Date.now() + BUSY_MS; require('fs').writeFileSync(busyFile(), JSON.stringify(b)); } catch { /* önemsiz */ }
+}
+
 /*
  * session: { cfg, model, effort, messages, cwd, perm, plan, useTools, skills, confirm, out }
  * out:     { waiting(bool, label), thinking(str), text(str), endText(), tool(name, summary), toolResult(ok, text), warn(str) }
@@ -22,6 +32,13 @@ async function callModel(session, signal, hooks) {
   const models = [session.model];
   let chainLoaded = false;
   let i = 0;
+  if (readBusy()[session.model]) { // bu model az önce yoğundu: yedek zincirinden sıradaki sağlam modelle başla
+    models.push(...(await fallbackChain(cfg, session.model)));
+    chainLoaded = true;
+    const busy = readBusy();
+    const k = models.findIndex((m) => !busy[m]);
+    i = k < 0 ? 0 : k;
+  }
 
   while (true) {
     const model = models[i];
@@ -64,6 +81,7 @@ async function callModel(session, signal, hooks) {
       }
       // Model tarafı sorunu (5xx / uç nokta yok): yedek modele geç
       if (err.status >= 500 || (err.status === 404 && /endpoint|provider/i.test(msg))) {
+        markBusy(model);
         if (!chainLoaded) { models.push(...(await fallbackChain(cfg, session.model))); chainLoaded = true; }
         if (i + 1 < models.length) {
           out.warn(t('fallback_switch', model, models[i + 1]));

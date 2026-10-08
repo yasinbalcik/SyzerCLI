@@ -29,12 +29,18 @@ async function chatStream({ key, model, messages, tools, effort, signal, onText,
   if (effort && effort !== 'auto') Object.assign(body, provider.reasoning(effort));
   if (tools && tools.length) body.tools = tools;
 
-  const res = await fetch(`${provider.base}/chat/completions`, {
-    method: 'POST',
-    signal,
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...provider.headers() },
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(`${provider.base}/chat/completions`, {
+      method: 'POST',
+      signal,
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...provider.headers() },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    if (e.name === 'AbortError' || (signal && signal.aborted)) throw e;
+    throw new KeyError(503, `network: ${(e.cause && (e.cause.code || e.cause.message)) || e.message}`); // geçici ağ hatası → yeniden dene / yedek model
+  }
   if (!res.ok) throw await errorFrom(res);
 
   const decoder = new TextDecoder();

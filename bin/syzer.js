@@ -59,6 +59,7 @@ function parseArgs(argv) {
     else if (a === '--no-open') f.noOpen = true;
     else if (a === '--quiet') f.quiet = true;
     else if (a === '--prompt-file') f.promptFile = argv[++i];
+    else if (a === '--title') f.title = argv[++i];
     else if (a === '--out') f.outFile = argv[++i];
     else if (a === '--dry-run') f.dryRun = true;
     else if (a === '--shortcut') f.shortcut = true;
@@ -110,6 +111,7 @@ async function printMode(cfg, f, prompt) {
     toolResult: (ok, txt, ui) => log(C.gray(`  ⎿ ${ui ? ui.summary : String(txt).split('\n')[0].slice(0, 100)}`)),
     warn: (m) => log(`⚠ ${m}`),
   };
+  if (f.title && process.stdout.isTTY) process.stdout.write(`\x1b]0;${f.title}\x07`);
   const perm = f.yes ? 'auto' : cfg.permissions === 'auto' ? 'auto' : 'readonly';
   const base = createSession(cfg, { model: f.model, perm, effort: f.effort, useTools: !f.noTools, agents: !f.noAgents, out });
   let s = base;

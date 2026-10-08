@@ -243,7 +243,7 @@ async function start(cfg, opts = {}, io = {}) {
     const [cmd, ...rest] = line.slice(1).trim().split(/\s+/);
     const arg = rest.join(' ').trim();
     switch (cmd) {
-      case 'help': case '?': { const ls = t('help').split('\n'); const tip = ls.pop(); console.log([...ls, t('help2'), t('help3'), t('help4'), t('help5'), tip].join('\n')); return; }
+      case 'help': case '?': { const ls = t('help').split('\n'); const tip = ls.pop(); console.log([...ls, t('help2'), t('help3'), t('help4'), t('help5'), t('help6'), tip].join('\n')); return; }
       case 'exit': case 'quit': return 'exit';
       case 'clear': resetSession(s); console.log(C.gray(t('cleared'))); return;
       case 'usage': await cmds.usage(cfg); return;

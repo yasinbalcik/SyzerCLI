@@ -3,6 +3,7 @@
 // İlk kurulum sihirbazı, güncelleme ve özet kullanım metinleri.
 module.exports = {
   en: {
+    help6: '  /runs · /run <n>           sub-agent runs · full details of one (task, tool calls, report)\n  /web                       open the web UI in the browser',
     web_open: 'Web UI:',
     su_welcome: "Welcome to SyzerCLI! Let's do a quick first-time setup (Enter keeps the default).",
     su_lang: 'Choose your language:', su_choice: 'Your choice',
@@ -19,6 +20,7 @@ module.exports = {
     um_title: 'Total', um_line: '{0}: {1}% used · {2}/{3} keys ready',
   },
   tr: {
+    help6: '  /runs · /run <no>          alt ajan çalışmaları · birinin tam dökümü (görev, araç çağrıları, rapor)\n  /web                       web arayüzünü tarayıcıda aç',
     web_open: 'Web arayüzü:',
     su_welcome: "SyzerCLI'ye hoş geldin! Kısa bir ilk kurulum yapalım (Enter = varsayılan).",
     su_lang: 'Dilini seç:', su_choice: 'Seçimin',

@@ -33,7 +33,7 @@ function makeSub(parent, agent, label, id, run) {
     maxSteps: 12,
     spread: null,
     allowedTools: new Set(agent.tools),
-    messages: [{ role: 'system', content: subSystem(parent.ctx, agent) }],
+    messages: [{ role: 'system', content: `${subSystem(parent.ctx, agent)}\n\nWrite your final report in ${require('./i18n').LANGS[cfg.lang] || 'the same language as the task'}.` }],
     todos: [],
     get perm() { return parent.perm; },
     set perm(v) { parent.perm = v; },

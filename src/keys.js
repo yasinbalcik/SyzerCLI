@@ -109,7 +109,7 @@ async function withRotation(cfg, fn, { onSwitch, onRetry, signal, spread = null 
       for (let attempt = 0; ; attempt++) {
         try { result = await fn(entry); break; }
         catch (err) {
-          if (err instanceof KeyError && err.status >= 500 && attempt < 3) {
+          if (err instanceof KeyError && err.status >= 500 && attempt < 2) {
             const delay = 2 * (attempt + 1);
             onRetry && onRetry(err.status, delay);
             await sleep(delay * 1000, signal);
