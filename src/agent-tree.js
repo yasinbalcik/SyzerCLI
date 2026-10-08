@@ -73,7 +73,7 @@ function createStore(now = Date.now) {
 }
 
 function statusColor(st, s) {
-  if (st === 'running') return C.cyan(s);
+  if (st === 'running') return C.orange(s);
   if (st === 'done') return C.green(s);
   if (st === 'failed') return C.red(s);
   if (st === 'stopped') return C.yellow(s);
@@ -105,7 +105,7 @@ function renderCompact(snap, { width, selected = -1, now = Date.now(), max = 6, 
   const extra = snap.nodes.length - shown.length;
   shown.forEach((n, i) => {
     const last = i === shown.length - 1 && extra <= 0 && !more;
-    const body = kindLabel(n) + (act(n) ? ' ' + act(n) : n.label ? ' ' + n.label : '') +
+    const body = kindLabel(n) + (shortModel(n.model) ? ' · ' + shortModel(n.model) : '') + (act(n) ? ' ' + act(n) : n.label ? ' ' + n.label : '') +
       '  ' + stats(n, now);
     const line = (last ? '└ ' : '├ ') + statusColor(n.status, MARK[n.status]) + ' ' + fit(body, width - 4);
     out.push(i === selected ? C.bold(line) : line);
@@ -114,22 +114,107 @@ function renderCompact(snap, { width, selected = -1, now = Date.now(), max = 6, 
   return out;
 }
 
-function boxLines(n, w, now, sel) {
-  const inner = w - 4;
-  const edge = sel ? C.orange : C.gray;
-  const row = (plain, color) => {
+const ident = (s) => s;
+
+// 6 satırlık yuvarlak kenarlı kart; her satır tam `width` görünür hücre.
+function card(n, { width, selected = false, now = Date.now(), color = true } = {}) {
+  const inner = Math.max(1, width - 4);
+  const edge = color ? (selected ? C.orange : C.gray) : ident;
+  const gray = color ? C.gray : ident;
+  const row = (plain, paint) => {
     const cell = padTo(fit(plain, inner), inner);
-    return edge('│ ') + (color ? color(cell) : cell) + edge(' │');
+    return edge('│ ') + (paint ? paint(cell) : cell) + edge(' │');
   };
   const head = MARK[n.status] + ' ' + kindLabel(n);
   return [
-    edge('┌' + '─'.repeat(w - 2) + '┐'),
-    row(head, (s) => statusColor(n.status, s)),
-    row(shortModel(n.model) || '-', C.gray),
+    edge('╭' + '─'.repeat(width - 2) + '╮'),
+    row(head, color ? (s) => statusColor(n.status, s) : null),
+    row(shortModel(n.model) || '-', gray),
     row(act(n) || n.label || '-'),
-    row(stats(n, now), C.gray),
-    edge('└' + '─'.repeat(w - 2) + '┘'),
+    row(stats(n, now), gray),
+    edge('╰' + '─'.repeat(width - 2) + '╯'),
   ];
+}
+
+const cardRows = (rows) => (rows >= 36 ? 2 : 1);
+
+function summary(snap, now = Date.now()) {
+  const ns = snap.nodes;
+  const cnt = (st) => ns.filter((n) => n.status === st).length;
+  let secs = 0;
+  if (ns.length) {
+    const a = Math.min(...ns.map((n) => n.t0));
+    const b = Math.max(...ns.map((n) => n.t1 || now));
+    secs = Math.max(0, Math.round((b - a) / 1000));
+  }
+  return {
+    agents: ns.length, done: cnt('done'), stopped: cnt('stopped'), failed: cnt('failed'),
+    aborted: cnt('aborted'), tokens: ns.reduce((s, n) => s + (n.tokens || 0), 0), secs,
+  };
+}
+const fmtSecs = (s) => (s >= 60 ? Math.floor(s / 60) + 'm' + (s % 60) + 's' : s + 's');
+
+function mainBox(text, width, color) {
+  const edge = color ? C.orange : ident;
+  const bold = color ? C.bold : ident;
+  return [
+    edge('╭' + '─'.repeat(width - 2) + '╮'),
+    edge('│ ') + bold(padTo(fit(text, width - 4), width - 4)) + edge(' │'),
+    edge('╰' + '─'.repeat(width - 2) + '╯'),
+  ];
+}
+
+// Kartları en çok 3 sütunda dizer; `maxCards` kadarını gösterir.
+function cardGrid(nodes, maxCards, { width, selected = -1, now, color = true }) {
+  const vis = nodes.slice(0, maxCards);
+  const cols = Math.max(1, Math.min(3, vis.length));
+  const cw = Math.floor((width - (cols - 1)) / cols);
+  const lines = [];
+  for (let r = 0; r < vis.length; r += cols) {
+    const cs = vis.slice(r, r + cols).map((n, k) => card(n, { width: cw, selected: r + k === selected, now, color }));
+    for (let l = 0; l < 6; l++) lines.push(cs.map((c) => c[l]).join(' '));
+  }
+  return lines;
+}
+
+function renderPanel(snap, { width, rows, selected = -1, now = Date.now() } = {}) {
+  if (!snap.nodes.length) return [];
+  const sm = summary(snap, now);
+  const running = snap.nodes.filter((n) => n.status === 'running').length;
+  const m = snap.main;
+  const text = 'main' + (m.model ? ' · ' + shortModel(m.model) : '') + (m.effort ? ' · ' + m.effort : '') +
+    ' · ' + t('rep_agents', sm.agents) + ' · ' + t('pn_running', running) + ' · ' + t('rep_done', sm.done) +
+    ' · ' + fmtSecs(sm.secs);
+  const lines = mainBox(text, width, true);
+  const k = Math.min(cardRows(rows), Math.floor((rows - lines.length - 1) / 6));
+  const cols = Math.min(3, snap.nodes.length);
+  const maxCards = Math.max(0, k) * cols;
+  lines.push(...cardGrid(snap.nodes, maxCards, { width, selected, now }));
+  const hidden = snap.nodes.length - Math.min(maxCards, snap.nodes.length);
+  if (hidden > 0) lines.push(C.gray(fit(t('tree_more', hidden), width)));
+  return lines.slice(0, Math.max(1, rows));
+}
+
+function renderReport(snap, { width, now = Date.now(), color = true } = {}) {
+  if (!snap.nodes.length) return [];
+  const g = color ? C.gray : ident;
+  const sm = summary(snap, now);
+  const lines = mainBox(mainText(snap), width, color);
+  lines.push(...cardGrid(snap.nodes, 9, { width, now, color }));
+  const hidden = snap.nodes.length - 9;
+  if (hidden > 0) lines.push(g(fit(t('tree_more', hidden), width)));
+  const parts = [t('rep_agents', sm.agents), t('rep_done', sm.done)];
+  if (sm.stopped) parts.push(t('rep_stopped', sm.stopped));
+  if (sm.failed) parts.push(t('rep_failed', sm.failed));
+  if (sm.aborted) parts.push(t('rep_aborted', sm.aborted));
+  parts.push(t('rep_tokens', fmtTok(sm.tokens)), fmtSecs(sm.secs));
+  lines.push(fit(parts.join(' · '), width));
+  const warns = snap.log.filter((e) => e.kind === 'warn').slice(-8);
+  if (warns.length) {
+    lines.push(g(fit('─ ' + t('rep_events'), width)));
+    for (const e of warns) lines.push(g(fit(fmtClock(e.t) + ' ' + e.text, width)));
+  }
+  return lines;
 }
 
 function renderTree(snap, { width, rows = 24, selected = -1, now = Date.now() } = {}) {
@@ -139,9 +224,9 @@ function renderTree(snap, { width, rows = 24, selected = -1, now = Date.now() } 
     lines.push(C.gray(fit(t('tree_none'), width)));
   } else if (width >= 70) {
     const mt = fit(mainText(snap), width - 4);
-    lines.push(C.orange('┌' + '─'.repeat(width - 2) + '┐'));
+    lines.push(C.orange('╭' + '─'.repeat(width - 2) + '╮'));
     lines.push(C.orange('│ ') + C.bold(padTo(mt, width - 4)) + C.orange(' │'));
-    lines.push(C.orange('└' + '─'.repeat(width - 2) + '┘'));
+    lines.push(C.orange('╰' + '─'.repeat(width - 2) + '╯'));
   } else {
     lines.push(C.orange(fit(mainText(snap), width)));
   }
@@ -155,7 +240,7 @@ function renderTree(snap, { width, rows = 24, selected = -1, now = Date.now() } 
       const fitCount = perRow * cols;
       const visible = fitCount >= snap.nodes.length ? snap.nodes : snap.nodes.slice(0, fitCount);
       for (let r = 0; r < visible.length; r += cols) {
-        const boxes = visible.slice(r, r + cols).map((n, k) => boxLines(n, bw, now, r + k === selected));
+        const boxes = visible.slice(r, r + cols).map((n, k) => card(n, { width: bw, selected: r + k === selected, now }));
         for (let l = 0; l < 6; l++) lines.push(boxes.map((b) => b[l] + ' ').join('').replace(/ +$/, ''));
       }
       const hidden = snap.nodes.length - visible.length;
@@ -214,7 +299,7 @@ function trackOut(out, store) {
     else if (outcome === 'stopped') store.event(t('tree_stopped'), id, 'warn');
     else {
       const first = String((run && run.report) || '').split('\n').filter(Boolean)[0] || '';
-      store.event(t('tree_error') + (first.replace(/^failed:\s*/i, '') || t('tree_aborted')), id, 'warn');
+      store.event(t('tree_error') + (first.replace(/^failed:\s*/i, '') || t('tree_error_unknown')), id, 'warn');
     }
   };
   out.warn = (msg) => {
@@ -224,4 +309,6 @@ function trackOut(out, store) {
   return out;
 }
 
-module.exports = { createStore, renderTree, renderCompact, trackOut };
+module.exports = {
+  createStore, renderTree, renderCompact, trackOut, card, renderPanel, renderReport, summary, cardRows,
+};

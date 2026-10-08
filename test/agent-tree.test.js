@@ -72,7 +72,8 @@ test('renderTree wide', () => {
   const s = mk(5);
   s.update(1, { action: 'grep foo' });
   const out = renderTree(s.snapshot(), { width: 100, rows: 40, now: 3000 });
-  assert.ok(all(out).includes('┌'));
+  assert.ok(all(out).includes('╭'));
+  assert.ok(!all(out).includes('┌'));
   assert.ok(out.every((l) => vlen(l) <= 100));
   const txt = all(out);
   assert.ok(txt.includes('explore'));
@@ -81,7 +82,7 @@ test('renderTree wide', () => {
 
 test('renderTree narrow', () => {
   const out = renderTree(mk(4).snapshot(), { width: 36, rows: 30, now: 3000 });
-  assert.ok(!all(out).includes('┌'));
+  assert.ok(!all(out).includes('╭'));
   assert.ok(out.every((l) => vlen(l) <= 36));
 });
 
@@ -233,7 +234,7 @@ test('thinking marker does not hide the label; aborted run logs localized text',
   assert.match(strip(renderCompact(st.snapshot(), { width: 100 }).join('\n')), /mytask/);
   assert.match(txt, /1 steps/);
   o.agentDone(1, { ok: false, report: '' });
-  assert.ok(st.snapshot().log.some((e) => /error: aborted/.test(e.text)));
+  assert.ok(st.snapshot().log.some((e) => /error: unknown error/.test(e.text)));
   assert.ok(st.snapshot().log.some((e) => e.text === 'started'));
   setLang('tr');
   try {
@@ -297,4 +298,88 @@ test('subagent run.stopped on max_iter warn', () => {
   sub.out.warn(t('max_iter'));
   assert.equal(run.stopped, true);
   assert.equal(warns.length, 2);
+});
+
+// ---- Task 2: card / panel / summary / report ----
+const { card, renderPanel, renderReport, summary, cardRows } = require('../src/agent-tree');
+const nodeOf = (o) => Object.assign({ id: 1, kind: 'explore', label: 'lbl', orca: false, status: 'running', action: 'reading', steps: 3, tokens: 1500, model: 'x/some-model:free', t0: 1000, t1: 0 }, o);
+
+test('card layout', () => {
+  setLang('en');
+  const c = card(nodeOf({}), { width: 30, now: 5000 });
+  assert.equal(c.length, 6);
+  for (const l of c) assert.equal(vlen(l), 30);
+  const p = strip(c.join('\n'));
+  assert.ok(strip(c[0]).startsWith('╭') && strip(c[5]).startsWith('╰'));
+  assert.match(p, /explore/); assert.match(p, /some-model/); assert.match(p, /reading/); assert.match(p, /3 steps/);
+  assert.match(strip(card(nodeOf({ model: '' }), { width: 30, now: 5000 })[2]), /│ - /);
+  for (const label of ['x'.repeat(200), '日本語'.repeat(40), 'a\x1b[31mb\x07c\x1b]0;t\x07']) {
+    const cc = card(nodeOf({ action: '', label }), { width: 30, now: 5000 });
+    for (const l of cc) assert.equal(vlen(l), 30);
+    assert.ok(!/\x07/.test(strip(cc.join(''))));
+    assert.ok(!/\x1b\]/.test(cc.join('')));
+  }
+});
+
+test('cardRows', () => {
+  assert.equal(cardRows(35), 1); assert.equal(cardRows(36), 2); assert.equal(cardRows(28), 1);
+});
+
+test('summary counts', () => {
+  const s = createStore(() => 1000); s.setMain({});
+  for (let i = 1; i <= 5; i++) { s.start(i, { kind: 'k' }); s.run(i); }
+  s.update(1, { tokens: 1500 }); s.update(2, { tokens: 300 });
+  s.finish(1, { ok: true }); s.finish(2, { ok: true }); s.finish(3, { outcome: 'stopped' });
+  s.finish(4, { outcome: 'failed' });
+  const sm = summary(s.snapshot(), 8000);
+  assert.equal(sm.agents, 5); assert.equal(sm.done, 2); assert.equal(sm.stopped, 1);
+  assert.equal(sm.failed, 1); assert.equal(sm.aborted, 0); assert.equal(sm.tokens, 1800);
+  assert.equal(sm.secs, 7);
+  assert.equal(summary(createStore().snapshot()).agents, 0);
+});
+
+test('renderPanel sizes', () => {
+  for (const width of [70, 100]) for (const n of [1, 3, 7]) for (const rows of [28, 36]) {
+    const out = renderPanel(mk(n).snapshot(), { width, rows, now: 5000 });
+    assert.ok(out.length <= rows, `${n}/${width}/${rows}`);
+    for (const l of out) assert.ok(vlen(l) <= width);
+  }
+  const t28 = strip(renderPanel(mk(7).snapshot(), { width: 100, rows: 28, now: 5000 }).join('\n'));
+  assert.equal((t28.match(/╭/g) || []).length, 3 + 1); // main box + 3 cards
+  assert.match(t28, /\+4/);
+  const t36 = strip(renderPanel(mk(7).snapshot(), { width: 100, rows: 36, now: 5000 }).join('\n'));
+  assert.equal((t36.match(/╭/g) || []).length, 6 + 1);
+  assert.match(t36, /\+1/);
+  assert.deepEqual(renderPanel(mk(0).snapshot(), { width: 100, rows: 28 }), []);
+});
+
+test('renderPanel header', () => {
+  const s = mk(3); s.finish(1, { ok: true });
+  const out = strip(renderPanel(s.snapshot(), { width: 100, rows: 28, now: 5000 })[1]);
+  assert.match(out, /main/); assert.match(out, /main-model/); assert.match(out, /2 running/); assert.match(out, /1 done/);
+});
+
+test('renderReport', () => {
+  const s = mk(3);
+  s.finish(1, { ok: true }); s.finish(2, { ok: true }); s.finish(3, { outcome: 'stopped' });
+  s.update(1, { tokens: 24200 });
+  s.event('just info', 1); s.event('bad thing', 3, 'warn');
+  const out = renderReport(s.snapshot(), { width: 100, now: 108000 });
+  const txt = strip(out.join('\n'));
+  assert.match(txt, /2 done · 1 stopped/);
+  assert.match(txt, /notable events/);
+  assert.match(txt, /\d\d:\d\d:\d\d bad thing/);
+  assert.ok(!/just info/.test(txt));
+  for (const l of out) assert.ok(vlen(l) <= 100);
+  const big = strip(renderReport(mk(12).snapshot(), { width: 100, now: 5000 }).join('\n'));
+  assert.equal((big.match(/╭/g) || []).length, 9 + 1); assert.match(big, /\+3/);
+  assert.ok(!/\x1b/.test(renderReport(s.snapshot(), { width: 100, now: 5000, color: false }).join('\n')));
+  assert.deepEqual(renderReport(mk(0).snapshot(), { width: 100 }), []);
+});
+
+test('renderCompact model', () => {
+  const s = createStore(() => 1000); s.start(1, { kind: 'explore' }); s.run(1);
+  s.finish(1, { outcome: 'stopped', model: 'some-model' });
+  const txt = strip(renderCompact(s.snapshot(), { width: 100, now: 2000 }).join('\n'));
+  assert.match(txt, /some-model/); assert.match(txt, /⚠/);
 });

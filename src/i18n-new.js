@@ -5,6 +5,7 @@ module.exports = {
   en: {
     tree_started: 'started', tree_done: 'done', tree_error: 'error: ', tree_aborted: 'aborted', tree_stopped: 'stopped: step limit reached',
     tree_hint: 'esc back · ↑↓ select · enter open agent',
+    tree_error_unknown: 'unknown error', rep_agents: '{0} agents', rep_done: '{0} done', rep_stopped: '{0} stopped', rep_failed: '{0} failed', rep_aborted: '{0} aborted', rep_tokens: '{0} tokens', rep_events: 'notable events', pn_running: '{0} running',
     tree_none: 'no subagents yet', tree_log: 'event log', tree_more: '+{0} more',
     agents_running: '{0} agent(s) working',
     sub_summary: '{0} · {1} tool call(s) · {2} tok · {3}s',
@@ -49,6 +50,7 @@ module.exports = {
   tr: {
     tree_started: 'başladı', tree_done: 'bitti', tree_error: 'hata: ', tree_aborted: 'iptal edildi', tree_stopped: 'yarıda kaldı: adım sınırı',
     tree_hint: 'esc geri · ↑↓ seç · enter ajanı aç',
+    tree_error_unknown: 'bilinmeyen hata', rep_agents: '{0} ajan', rep_done: '{0} bitti', rep_stopped: '{0} yarıda', rep_failed: '{0} hatalı', rep_aborted: '{0} iptal', rep_tokens: '{0} token', rep_events: 'önemli olaylar', pn_running: '{0} çalışıyor',
     tree_none: 'henüz alt ajan yok', tree_log: 'olay günlüğü', tree_more: '+{0} daha',
     agents_running: '{0} agent çalışıyor',
     sub_summary: '{0} · {1} araç çağrısı · {2} tok · {3}s',
