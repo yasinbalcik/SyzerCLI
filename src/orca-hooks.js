@@ -7,8 +7,7 @@ const http = require('http');
 const fs = require('fs');
 
 const TIMEOUT_MS = 800;
-const AGENT_TYPE = 'syzer'; // Orca'da kendi ajan kimliği (yama: orca_agent_type işareti)
-const SOURCE = 'hermes';
+const SOURCE = 'syzer'; // Orca'da Syzer'ın kendi hook yolu: POST /hook/syzer (yama: orca-edits.js, grup agent)
 let chain = Promise.resolve();
 
 function readEndpoint() {
@@ -47,7 +46,7 @@ function send(eventName, payload) {
         env: c.env,
         version: c.version,
         hook_event_name: eventName,
-        payload: Object.assign({ hook_event_name: eventName, orca_agent_type: AGENT_TYPE }, payload)
+        payload: Object.assign({ hook_event_name: eventName }, payload)
       });
       const req = http.request({
         host: '127.0.0.1',
@@ -78,28 +77,28 @@ function enqueue(eventName, payload) {
 const str = (v, n) => String(v == null ? '' : v).slice(0, n || 4000);
 
 // user submitted a prompt -> working
-function promptSubmitted(prompt) { return enqueue('pre_llm_call', { prompt: str(prompt) }); }
+function promptSubmitted(prompt) { return enqueue('Prompt', { prompt: str(prompt) }); }
 // a tool call began -> working (shows tool name in the row)
 function toolStarted(name, input) {
   const p = { tool_name: str(name, 200) };
   if (input !== undefined) p.tool_input = typeof input === 'object' && input ? input : { command: str(input, 1000) };
-  return enqueue('pre_tool_call', p);
+  return enqueue('ToolStart', p);
 }
-function toolFinished(name) { return enqueue('post_tool_call', { tool_name: str(name, 200) }); }
+function toolFinished(name) { return enqueue('ToolEnd', { tool_name: str(name, 200) }); }
 // assistant turn finished -> done
 function turnDone(lastAssistantMessage) {
-  return enqueue('post_llm_call', { last_assistant_message: str(lastAssistantMessage) });
+  return enqueue('Done', { last_assistant_message: str(lastAssistantMessage) });
 }
 // blocked on user permission/question -> waiting
 function waiting(kind) {
-  return enqueue('pre_approval_request', { tool_name: str(kind || 'approval', 200) });
+  return enqueue('Waiting', { tool_name: str(kind || 'approval', 200) });
 }
 // alt ajan başladı/bitti → Orca kenar çubuğunda çalışan alt ajan listesi (yalnızca çalışanlar gösterilir)
 function subagentStart({ id, kind }) { return enqueue('SubagentStart', { agent_id: str(id, 64), agent_type: str(kind || 'general-purpose', 60) }); }
 function subagentStop({ id }) { return enqueue('SubagentStop', { agent_id: str(id, 64) }); }
-function resumed() { return enqueue('post_approval_response', { tool_name: 'approval' }); }
+function resumed() { return enqueue('Resumed', { tool_name: 'approval' }); }
 // session exit -> done (idle)
-function end() { return enqueue('on_session_end', {}); }
+function end() { return enqueue('End', {}); }
 // await before process.exit(); bounded by TIMEOUT_MS per queued event
 function flush() { return chain; }
 

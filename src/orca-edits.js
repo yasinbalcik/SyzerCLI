@@ -6,24 +6,17 @@
 // Gruplar: core (yama işareti) · usage (Usage paneli/durum çubuğu) · agent (Syzer'ın kendi ajan kimliği + durum olayları)
 //          · history (oturum geçmişi tarayıcısı: Syzer oturumları + alt ajan listesi)
 const SB = /^out\/renderer\/assets\/StatusBar-.*\.js$/;
-const g = (name) => (re) => ({ re, name });
 
-function mainFetch(cmd) {
-  return 'return(async()=>{const cp=process.getBuiltinModule?process.getBuiltinModule(`child_process`):require(`child_process`);' +
-    'const base={provider:`kimi`,weekly:null,updatedAt:Date.now()};' +
-    `return await new Promise(r=>cp.execFile(process.env.SYZER_BIN||${JSON.stringify(cmd)},[\`usage\`,\`--summary\`,\`--json\`],{timeout:20000,shell:true,windowsHide:true,maxBuffer:1<<20},(err,out)=>{` +
-    'if(err)return r({...base,session:null,error:`syzer: `+String(err.message).split(String.fromCharCode(10))[0],status:`error`});' +
-    'try{const j=JSON.parse(out);const ps=(j.providers||[]).filter(p=>p.percent_used!=null);' +
-    'if(!ps.length)return r({...base,session:null,error:`No quota info (${j.keys_ready}/${j.keys_total} keys ready)`,status:`unavailable`});' +
-    'const reset=ps.map(p=>p.resets_at?Date.parse(p.resets_at):null).filter(Boolean).sort()[0]||Date.now()+864e5;' +
-    'const mk=(name,u,badge,detail,ra)=>({name,usedPercent:u,windowMinutes:1440,resetsAt:ra,resetDescription:badge,badge,detail});' +
-    'const left=p=>p.limit!=null?`${Math.max(0,p.limit-(p.used||0))} left`:`quota n/a`;' +
-    'const lim=ps.filter(p=>p.limit!=null);const tl=lim.length?`${lim.reduce((a,p)=>a+Math.max(0,p.limit-(p.used||0)),0)} left`:`quota n/a`;' +
-    'const total=mk(`Total`,Math.round(ps.reduce((a,p)=>a+p.percent_used,0)/ps.length),`${j.keys_ready}/${j.keys_total} keys`,tl,reset);' +
-    'const buckets=[...ps.map(p=>mk(p.name,p.percent_used,`${p.keys_ready}/${p.keys_total} keys`,left(p),p.resets_at?Date.parse(p.resets_at):reset)),total];' +
-    'r({...base,session:total,buckets,error:null,status:`ok`})}' +
-    'catch(e){r({...base,session:null,error:`syzer: bad JSON`,status:`error`})}}))})();';
+// usage sağlayıcı yamaları (ayrı dosya; glob'lar out/ önekiyle, yer tutucular doldurulur)
+function usageEdits(cmd, ICON) {
+  return require('./orca-edits-usage').edits.map((e) => ({
+    group: e.group === 'settings' ? 'usage-settings' : 'usage',
+    glob: new RegExp(e.glob.source.replace(/^\^/, '^out\/'), e.glob.flags),
+    from: e.from,
+    to: e.to.split('__SYZER_CMD__').join(JSON.stringify(cmd)).split('__SYZER_ICON__').join(ICON),
+  }));
 }
+const g = (name) => (re) => ({ re, name });
 
 // Tarayıcı hizmetine eklenen Syzer oturum ayrıştırıcısı (minified yardımcı adları bu Orca sürümüne göre: _ ve m)
 const PARSER = 'async function __syzerParse(file,platform,messages){' +
@@ -55,6 +48,13 @@ const SUBS = 'async function __syzerSubs(parent){' +
   'subagent:{parentSessionId:base,agentType:j.agentType||null,status:ST[j.status]??null}})}catch{}}' +
   'out.sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));return{sessions:out,issues}}\n';
 
+
+// Syzer olay ayrıştırıcısı (Orca ana süreç kapsamındaki yardımcıları kullanır: foe, eoe, yse, An, Bn, zn, kn, un)
+const SYZER_EVENT = 'var __syzerEvMap={Prompt:`pre_llm_call`,ToolStart:`pre_tool_call`,ToolEnd:`post_tool_call`,Waiting:`pre_approval_request`,Resumed:`post_approval_response`,Done:`post_llm_call`,End:`on_session_end`},__syzerLead=new WeakMap;' +
+  'function __syzerEvent(e,t,n,r,i){let a=__syzerLead.get(e);if(a||(a=new Map,__syzerLead.set(e,a)),t===`SubagentStart`||t===`SubagentStop`){let o=foe(e,t,n,r,i);return o?(t===`SubagentStop`&&a.get(r)===`done`&&o.state===`working`&&!(o.subagents||[]).some(e=>e.state===`working`)&&(o={...o,state:`done`}),{...o,agentType:`syzer`}):null}' +
+  'let o=typeof t==`string`?__syzerEvMap[t]:void 0;if(!o)return null;let s=yse[o],c=An(e,r,Bn(`hermes`,o,i),{resetOnNewTurn:zn(`hermes`,o)});' +
+  'return t===`End`?(a.delete(r),e.claudeSubagentRosterByPaneKey.delete(r)):a.set(r,s),un({state:s,prompt:kn(e,r,n,{resetOnNewTurn:zn(`hermes`,o)}),agentType:`syzer`,toolName:c.toolName,toolInput:c.toolInput,interactivePrompt:c.interactivePrompt,lastAssistantMessage:c.lastAssistantMessage,lastAssistantMessageIsToolOutput:c.lastAssistantMessageIsToolOutput,subagents:eoe(e.claudeSubagentRosterByPaneKey.get(r))})}';
+
 const SYZER_DIR = 'require(`node:path`).join(require(`node:os`).homedir(),`.syzercli`,`sessions`)';
 
 function edits(cmd, ICON, marker) {
@@ -66,17 +66,10 @@ function edits(cmd, ICON, marker) {
     // ---- core: yama sürüm işareti ----
     { group: 'core', file: 'out/main/index.js', from: 'const guardKey = "__ORCA_BOOTSTRAP_FATAL_EXIT_GUARD__"', to: `${marker}const guardKey = "__ORCA_BOOTSTRAP_FATAL_EXIT_GUARD__"` },
 
-    // ---- usage: Kimi yuvası → Syzer (Usage paneli + durum çubuğu) ----
-    { group: 'usage', file: 'out/main/index.js', from: 'fetchKimiWithResolvedHome(){', to: `fetchKimiWithResolvedHome(){${mainFetch(cmd)}` },
+    // ---- usage: Syzer'ın KENDİ kullanım sağlayıcısı (provider id: syzer; Kimi'ye bağlı değil) ----
     { group: 'usage', glob: SB, from: '(0,J.jsx)(`div`,{className:`font-medium ${n}`,children:t}),(0,J.jsx)(`div`,{className:`h-[6px]', to: '(0,J.jsxs)(`div`,{className:`flex justify-between font-medium ${n}`,children:[t,e.badge?(0,J.jsx)(`span`,{className:`font-normal opacity-70`,children:e.badge}):null]}),(0,J.jsx)(`div`,{className:`h-[6px]' },
     { group: 'usage', glob: SB, from: 'd&&(0,J.jsx)(`span`,{children:d})]})]})}function At(', to: 'e.detail&&(0,J.jsx)(`span`,{children:e.detail}),d&&(0,J.jsx)(`span`,{children:d})]})]})}function At(' },
-    { group: 'usage', glob: SB, from: 'e===`kimi`?(0,J.jsx)(G,{agent:`kimi`,size:13})', to: `e===\`kimi\`?${icon(13)}` },
-    { group: 'usage', glob: SB, from: '(0,J.jsx)(G,{agent:`kimi`,size:14})', to: icon(14) },
-    { group: 'usage', glob: SB, from: 'e===`kimi`?`Kimi`:', to: 'e===`kimi`?`Syzer`:' },
-    { group: 'usage', glob: SB, from: '`Kimi Usage`', to: '`Syzer Usage`' },
-    { group: 'usage', glob: SB, from: 'case`kimi`:return`K`', to: 'case`kimi`:return`S`' },
-    { group: 'usage', glob: /^out\/renderer\/assets\/status-bar-agent-gating-.*\.js$/, from: '`gemini`,`kimi`,`antigravity`,`grok`,`zcode`]);function D', to: '`gemini`,`antigravity`,`grok`,`zcode`]);function D' },
-    { group: 'usage', glob: SB, from: 'e===`zcode`?t.zcodePlanApiKeyConfigured===!0:!1:!1}', to: 'e===`zcode`?t.zcodePlanApiKeyConfigured===!0:e===`kimi`||!1:!1}' },
+    ...usageEdits(cmd, ICON),
 
     // ---- agent: Syzer kendi ajan kimliği (`syzer`) ----
     { group: 'agent', glob: /^out\/main\/chunks\/tui-agent-config-.*\.js$/, from: CFG, to: CFG_TO },
@@ -88,10 +81,12 @@ function edits(cmd, ICON, marker) {
     { group: 'agent', file: 'out/main/index.js', from: 'dsb:`DeepSeek Build`,jcode:`Jcode`};function hBa', to: 'dsb:`DeepSeek Build`,jcode:`Jcode`,syzer:`Syzer`};function hBa' },
     { group: 'agent', glob: /^out\/renderer\/assets\/store-.*\.js$/, from: 'jcode:!0};function LM(e)', to: 'jcode:!0,syzer:!0};function LM(e)' },
     { group: 'agent', glob: /^out\/renderer\/assets\/agent-catalog-.*\.js$/, from: 'homepageUrl:`https://github.com/1jehuang/jcode`}]}', to: 'homepageUrl:`https://github.com/1jehuang/jcode`},{id:`syzer`,label:`Syzer`,cmd:`syzer`,iconUrl:`' + ICON + '`,searchAliases:[`syzercli`,`openrouter`,`nvidia`],homepageUrl:`https://github.com/yasinbalcik/SyzerCLI`}]}' },
-    // durum olayları: Syzer, hermes kaynağı üzerinden `orca_agent_type: syzer` işaretiyle gelir → ajan türü syzer
-    { group: 'agent', file: 'out/main/index.js', from: 'agentType:`hermes`,toolName:o.toolName', to: 'agentType:i&&i.orca_agent_type===`syzer`?`syzer`:`hermes`,toolName:o.toolName' },
-    { group: 'agent', file: 'out/main/index.js', from: 'case`hermes`:f=bse(t,r,i,a,o);break;', to: 'case`hermes`:if(o&&o.orca_agent_type===`syzer`&&(r===`SubagentStart`||r===`SubagentStop`)){let e=foe(t,r,i,a,o);f=e?{...e,agentType:`syzer`}:null;break}f=bse(t,r,i,a,o);break;' },
-
+    // durum olayları: Syzer'ın KENDİ hook yolu (POST /hook/syzer) ve kendi olay ayrıştırıcısı (başka ajana bağlı değil)
+    { group: 'agent', file: 'out/main/index.js', from: '"/hook/jcode":`jcode`})', to: '"/hook/jcode":`jcode`,"/hook/syzer":`syzer`})' },
+    { group: 'agent', file: 'out/main/index.js', from: '.zcode.dsh.jcode`.split(`.`));function dn(e)', to: '.zcode.dsh.jcode.syzer`.split(`.`));function dn(e)' },
+    { group: 'agent', file: 'out/main/index.js', from: 'case`hermes`:return t===`pre_llm_call`||t===`on_session_start`;case`devin`:', to: 'case`hermes`:return t===`pre_llm_call`||t===`on_session_start`;case`syzer`:return t===`Prompt`;case`devin`:' },
+    { group: 'agent', file: 'out/main/index.js', from: 'case`hermes`:f=bse(t,r,i,a,o);break;', to: 'case`hermes`:f=bse(t,r,i,a,o);break;case`syzer`:f=__syzerEvent(t,r,i,a,o);break;' },
+    { group: 'agent', file: 'out/main/index.js', from: 'function xse(e,t,n,r,i){if(t===`SessionStart`)return an(e,r),null;', to: SYZER_EVENT + 'function xse(e,t,n,r,i){if(t===`SessionStart`)return an(e,r),null;' },
     // ---- history: oturum geçmişi (Syzer oturumları + alt ajanlar, kendi biçimimiz) ----
     { group: 'history', glob: /^out\/main\/chunks\/session-scanner-opencode-sqlite-open-.*\.js$/, from: '`kimi`,`muse`,`jcode`],p=64', to: '`kimi`,`muse`,`jcode`,`syzer`],p=64' },
     { group: 'history', glob: /^out\/main\/chunks\/session-scanner-opencode-sqlite-open-.*\.js$/, from: 'muse:`Muse`,jcode:`Jcode`', to: 'muse:`Muse`,jcode:`Jcode`,syzer:`Syzer`' },

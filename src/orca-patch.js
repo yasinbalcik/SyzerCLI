@@ -11,7 +11,7 @@ const crypto = require('crypto');
 const { execFileSync, spawnSync } = require('child_process');
 const config = require('./config');
 
-const PATCH_VERSION = 7;
+const PATCH_VERSION = 8;
 const HOME = path.join(config.DIR, 'orca');
 const LOG = path.join(HOME, 'patch.log');
 const TASKS = ['SyzerOrcaPatch'];
@@ -197,10 +197,16 @@ function patch(opts = {}) {
     const built = buildPatched(dir, srcAsar, unpackedSrc, cmd);
     if (opts.dryRun) return { status: 'dry-run-ok', detail: `${built.extra.length + built.unpacked.length} files would be patched (Orca ${st.orcaVersion})${built.skipped.length ? `; skipped: ${built.skipped.join(' | ')}` : ''}` };
 
-    // unpacked dosyalar: orijinali .syzer-orig olarak sakla, yamalıyı yaz
+    // unpacked dosyalar: orijinali .syzer-orig olarak sakla (yoksa; yamalı bir dosya "orijinal" diye yedeklenmez), sonra yamalıyı yaz
+    for (const { f } of built.unpacked) {
+      const dst = path.join(P.unpacked, ...f.split('/'));
+      if (!fs.existsSync(`${dst}.syzer-orig`) && /syzer/i.test(fs.readFileSync(dst, 'utf8'))) {
+        return { status: 'error', detail: `original of ${f} is missing (file already patched); run "syzer orca restore" or reinstall Orca` };
+      }
+    }
     for (const { f, buf } of built.unpacked) {
       const dst = path.join(P.unpacked, ...f.split('/'));
-      if (!wasPatched) fs.copyFileSync(dst, `${dst}.syzer-orig`);
+      if (!fs.existsSync(`${dst}.syzer-orig`)) fs.copyFileSync(dst, `${dst}.syzer-orig`);
       fs.writeFileSync(dst, buf);
     }
     const tmp = `${P.asarFile}.syzer-new`;
