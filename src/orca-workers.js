@@ -75,6 +75,8 @@ async function spawnWorker(parent, call, signal) {
   const title = `Syzer: ${String(a.title || a.description || 'worker').slice(0, 40)}`;
   const po = parent.out;
   po.agentStart && po.agentStart(`w${id}`, `worker: ${title}`);
+  const hooks = require('./orca-hooks');
+  hooks.subagentStart({ id: `syz-w-${id}`, kind: 'syzer-worker' });
   po.agentUpdate && po.agentUpdate(`w${id}`, 'Orca sekmesinde çalışıyor');
   const t0 = Date.now();
   const run = { id: `w${id}`, label: title, agent: 'syzer-worker', prompt: a.prompt, steps: [], report: '', ok: false };
@@ -117,6 +119,7 @@ async function spawnWorker(parent, call, signal) {
     return { ok: false, output: `WORKER FAILED: ${err.message}\nDo NOT silently do this work yourself; report the failure to the user.`, ui: { summary: `${title}: ${err.message}` } };
   } finally {
     run.secs = run.secs || ((Date.now() - t0) / 1000).toFixed(1);
+    hooks.subagentStop({ id: `syz-w-${id}` });
     po.agentDone && po.agentDone(`w${id}`, run);
   }
 }

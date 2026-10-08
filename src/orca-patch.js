@@ -11,7 +11,7 @@ const crypto = require('crypto');
 const { execFileSync, spawnSync } = require('child_process');
 const config = require('./config');
 
-const PATCH_VERSION = 5;
+const PATCH_VERSION = 6;
 const HOME = path.join(config.DIR, 'orca');
 const LOG = path.join(HOME, 'patch.log');
 const TASKS = ['SyzerOrcaPatch'];
@@ -58,6 +58,8 @@ function edits(cmd) {
     { glob: /^out\/renderer\/assets\/store-.*\.js$/, from: 'autohand:{detectCmd:`autohand`,', to: 'autohand:{detectCmd:`syzer`,' },
     { glob: /^out\/main\/chunks\/tui-agent-config-.*\.js$/, from: 'autohand:{detectCmd:`autohand`,', to: 'autohand:{detectCmd:`syzer`,' },
     { glob: /^out\/main\/chunks\/tui-agent-display-names-.*\.js$/, from: 'autohand:`Autohand Code`', to: 'autohand:`Syzer`' },
+    // Syzer alt ajanları (SubagentStart/Stop, hermes kaynağı üzerinden) Claude gibi işlenir → kenar çubuğunda çalışan alt ajan listesi
+    { file: 'out/main/index.js', from: 'case`hermes`:f=bse(t,r,i,a,o);break;', to: 'case`hermes`:if(o&&o.orca_agent_type===`autohand`&&(r===`SubagentStart`||r===`SubagentStop`)){let e=foe(t,r,i,a,o);f=e?{...e,agentType:`autohand`}:null;break}f=bse(t,r,i,a,o);break;' },
     { glob: SB, from: '(0,J.jsx)(`div`,{className:`font-medium ${n}`,children:t}),(0,J.jsx)(`div`,{className:`h-[6px]', to: '(0,J.jsxs)(`div`,{className:`flex justify-between font-medium ${n}`,children:[t,e.badge?(0,J.jsx)(`span`,{className:`font-normal opacity-70`,children:e.badge}):null]}),(0,J.jsx)(`div`,{className:`h-[6px]' },
     { glob: SB, from: 'd&&(0,J.jsx)(`span`,{children:d})]})]})}function At(', to: 'e.detail&&(0,J.jsx)(`span`,{children:e.detail}),d&&(0,J.jsx)(`span`,{children:d})]})]})}function At(' },
     { glob: SB, from: 'e===`kimi`?(0,J.jsx)(G,{agent:`kimi`,size:13})', to: `e===\`kimi\`?${icon(13)}` },

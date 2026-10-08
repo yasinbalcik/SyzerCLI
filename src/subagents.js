@@ -75,6 +75,8 @@ async function spawn(parent, call, signal) {
   const label = `${agent.name}: ${a.description || trunc(a.prompt.replace(/\s+/g, ' '), 40)}`;
   const po = parent.out;
   po.agentStart && po.agentStart(id, label);
+  const hooks = require('./orca-hooks');
+  hooks.subagentStart({ id: `syz-${process.pid}-${id}`, kind: agent.name });
   const t0 = Date.now();
   const run = { id, label, agent: agent.name, prompt: a.prompt, steps: [], report: '', ok: false };
   parent.runs = parent.runs || [];
@@ -102,6 +104,7 @@ async function spawn(parent, call, signal) {
     return { ok: false, output: `Subagent failed: ${err.message}`, ui: { summary: `${agent.name}: ${err.message}` } };
   } finally {
     run.secs = ((Date.now() - t0) / 1000).toFixed(1);
+    hooks.subagentStop({ id: `syz-${process.pid}-${id}` });
     po.agentDone && po.agentDone(id, run);
   }
 }

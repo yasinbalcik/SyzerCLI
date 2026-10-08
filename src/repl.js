@@ -14,6 +14,7 @@ const sessions = require('./sessions');
 const { undoLast } = require('./tools');
 const providers = require('./providers');
 const { Editor } = require('./input');
+const { Dock } = require('./dock');
 const { McpManager } = require('./mcp');
 const { killAll } = require('./tools');
 const compactMod = require('./compact');
@@ -49,13 +50,29 @@ function banner(s, reasoning) {
 
 function makeOut() {
   let spin = null;
+  let dock = null;
   let md = null;
   let thought = '';
   let thoughtChars = 0;
   const agents = new Map(); // çalışan alt ajanlar: id → { label, action }
   let paused = false;
+  const agentRows = () => {
+    const list = [...agents.values()];
+    const cols = (process.stdout.columns || 100) - 4;
+    return list.map((e, i) => {
+      const mark = i === list.length - 1 ? '└' : '├';
+      const secs = Math.floor((Date.now() - e.t0) / 1000);
+      const tail = C.gray(` · ${e.steps} ${t('lbl_steps')} · ${secs}s`);
+      const room = Math.max(20, cols - vlen(tail) - 6);
+      const label = trunc(e.label, 40);
+      const action = trunc(String(e.action).replace(/\s+/g, ' '), Math.max(8, room - vlen(label) - 2));
+      return `  ${C.gray(mark)} ${C.bold(label)}  ${C.gray(action)}${tail}`;
+    });
+  };
   const out = {
+    setDock(d) { dock = d; },
     waiting(on, label) {
+      if (dock && dock.active) { dock.setStatus(on ? (label || t('thinking')) : null); return; }
       if (on) {
         if (paused) return;
         if (!spin) { thought = ''; thoughtChars = 0; spin = spinner(label || t('thinking')); }
@@ -65,6 +82,7 @@ function makeOut() {
     thinking(chunk) {
       thoughtChars += chunk.length;
       thought = (thought + chunk).replace(/\s+/g, ' ').slice(-400);
+      if (dock && dock.active) { dock.setDetail(thought); dock.setMeta(`↓ ${Math.max(1, Math.round(thoughtChars / 4))} tok`); return; }
       if (spin) { spin.detail(thought); spin.meta(`↓ ${Math.max(1, Math.round(thoughtChars / 4))} tok`); }
     },
     text(txt) { (md ||= new MdStream()).push(txt); },
@@ -91,24 +109,16 @@ function makeOut() {
     agentUpdate(id, action, steps) { const e = agents.get(id); if (e) { e.action = action; if (steps != null) e.steps = steps; out.refresh(); } },
     agentDone(id) { agents.delete(id); out.refresh(); },
     refresh() {
+      if (dock && dock.active) { dock.setAgents(agentRows()); return; }
       if (paused || !agents.size) return;
       out.waiting(true, t('agents_running', agents.size));
       spin.label(t('agents_running', agents.size));
       if (!out._tick) out._tick = setInterval(() => { if (agents.size) out.refresh(); else { clearInterval(out._tick); out._tick = null; } }, 1000);
       spin.detail('');
-      const list = [...agents.values()];
-      const cols = (process.stdout.columns || 100) - 4;
-      spin.rows(list.map((e, i) => {
-        const mark = i === list.length - 1 ? '└' : '├';
-        const secs = Math.floor((Date.now() - e.t0) / 1000);
-        const tail = C.gray(` · ${e.steps} ${t('lbl_steps')} · ${secs}s`);
-        const room = Math.max(20, cols - vlen(tail) - vlen(mark) - 3);
-        const text = trunc(`${e.label}  ${e.action}`.replace(/\s+/g, ' '), room);
-        return `  ${C.gray(mark)} ${text.replace(e.label, C.bold(trunc(e.label, 40))).replace(e.action, C.gray(e.action))}${tail}`;
-      }));
+      spin.rows(agentRows());
     },
     // Onay sorusu sırasında spinner çizimini durdurur
-    pause(on) { paused = on; if (on && spin) { spin.stop(); spin = null; } },
+    pause(on) { if (dock && dock.active) { dock.pause(on); return; } paused = on; if (on && spin) { spin.stop(); spin = null; } },
   };
   return out;
 }
@@ -205,6 +215,7 @@ async function start(cfg, opts = {}, io = {}) {
   let ctrl = null;
   let webUi = null;
   editor.onInterrupt = () => { if (ctrl) ctrl.abort(); };
+  const dock = new Dock({ editor });
 
   const doCompact = async (hint) => {
     console.log(C.gray(t('compact_start')));
@@ -218,12 +229,17 @@ async function start(cfg, opts = {}, io = {}) {
 
   const chat = async (text, images = []) => {
     ctrl = new AbortController();
+    let docked = false;
+    const closeDock = () => { if (docked) { docked = false; s.out.setDock(null); dock.end(); } };
     try {
       // Bağlam %75'i aşarsa önce otomatik özetle
       const win = await windowOf(s.model);
       if (estimate(s.messages) > win * 0.75) await doCompact('');
       const content = await buildContent((s.plan ? PLAN_PREFIX : '') + expandMentions(text, s.cwd), images, s.model, s.out);
-      const r = await runTurn(s, content, ctrl.signal);
+      docked = await dock.begin();
+      if (docked) s.out.setDock(dock);
+      let r;
+      try { r = await runTurn(s, content, ctrl.signal); } finally { closeDock(); }
       sessions.save(s);
       const parts = [];
       const ratio = estimate(s.messages) / win;
@@ -242,6 +258,7 @@ async function start(cfg, opts = {}, io = {}) {
       if (left && left.remaining > 0 && left.remaining <= 5) s.out.warn(t('low_keys', r.keyIndex + 1, left.remaining));
       console.log('');
     } catch (err) {
+      closeDock();
       s.out.waiting(false);
       s.out.endText();
       if (err.name === 'AbortError') console.log(C.gray(t('aborted')) + '\n');
@@ -404,8 +421,9 @@ async function start(cfg, opts = {}, io = {}) {
   editor.start();
   try {
     while (true) {
-      const r = await editor.read(getPrompt());
-      if (r.exit) break;
+      let r;
+      if (dock.queue.length) { r = dock.queue.shift(); console.log(`${getPrompt()}${r.display || r.text}`); }
+      else { r = await editor.read(getPrompt()); if (r.exit) break; }
       const text = r.text.trim();
       if (!text && !r.images.length) continue;
       if (/^#\s*\S/.test(text) && !text.includes('\n') && !r.images.length && !text.startsWith('##')) {

@@ -94,10 +94,13 @@ function turnDone(lastAssistantMessage) {
 function waiting(kind) {
   return enqueue('pre_approval_request', { tool_name: str(kind || 'approval', 200) });
 }
+// alt ajan başladı/bitti → Orca kenar çubuğunda çalışan alt ajan listesi (yalnızca çalışanlar gösterilir)
+function subagentStart({ id, kind }) { return enqueue('SubagentStart', { agent_id: str(id, 64), agent_type: str(kind || 'general-purpose', 60) }); }
+function subagentStop({ id }) { return enqueue('SubagentStop', { agent_id: str(id, 64) }); }
 function resumed() { return enqueue('post_approval_response', { tool_name: 'approval' }); }
 // session exit -> done (idle)
 function end() { return enqueue('on_session_end', {}); }
 // await before process.exit(); bounded by TIMEOUT_MS per queued event
 function flush() { return chain; }
 
-module.exports = { promptSubmitted, toolStarted, toolFinished, turnDone, waiting, resumed, end, flush };
+module.exports = { subagentStart, subagentStop, promptSubmitted, toolStarted, toolFinished, turnDone, waiting, resumed, end, flush };

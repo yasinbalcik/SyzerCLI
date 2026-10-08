@@ -82,8 +82,9 @@ class Editor {
   // --- genel API ---
   read(prompt, { history = true } = {}) {
     this.prompt = prompt;
-    this.items = [];
-    this.cur = 0;
+    this.items = this.carry || [];
+    this.cur = this.items.length;
+    this.carry = null;
     this.hIdx = -1;
     this.images = [];
     this.useHistory = history;
@@ -111,7 +112,7 @@ class Editor {
     }
     if (this.mode === 'key') {
       const ch = key.ctrl && key.name === 'c' ? 'n' : (str || key.name || '').toLowerCase();
-      this.mode = 'idle';
+      this.mode = this.dock ? 'line' : 'idle';
       this.out.write(ch + '\n');
       const done = this.pending; this.pending = null;
       done(ch);
@@ -135,9 +136,15 @@ class Editor {
     if (key.ctrl) {
       switch (key.name) {
         case 'c':
+          if (this.dock) {
+            if (this.items.length) { this.items = []; this.cur = 0; return this._render(); }
+            if (this.onInterrupt) this.onInterrupt();
+            return;
+          }
           if (this.items.length) { this.items = []; this.cur = 0; this.out.write('^C'); return this._render(); }
           return this._finish({ exit: true });
         case 'd':
+          if (this.dock) return;
           if (!this.items.length) return this._finish({ exit: true });
           if (this.cur < this.items.length) this.items.splice(this.cur, 1);
           return this._render();
@@ -186,7 +193,7 @@ class Editor {
   }
 
   _tab() {
-    if (!this.complete) return;
+    if (!this.complete || this.dock) return;
     const before = this.items.slice(0, this.cur);
     if (before.some((x) => typeof x !== 'string')) return;
     const text = before.join('');
@@ -234,6 +241,13 @@ class Editor {
     if (this.useHistory && plain && text.trim() && this.history[this.history.length - 1] !== this.items.join('')) {
       this.history.push(this.items.join(''));
     }
+    if (this.dock) {
+      const display = this.items.map(itemShow).join('');
+      this.items = []; this.cur = 0;
+      if (text.trim() || images.length) this.dock.submit({ text, images, display });
+      else this._render();
+      return;
+    }
     this.cur = this.items.length;
     this._render();
     this._finish({ text, images, display: this.items.map(itemShow).join('') });
@@ -251,6 +265,7 @@ class Editor {
   // --- çizim ---
   _render() {
     if (!this.tty) return;
+    if (this.dock) return this.dock.draw();
     const cols = (this.out.columns || 80) - 1;
     const avail = Math.max(10, cols - vlen(this.prompt));
     const widths = this.items.map(itemWidth);

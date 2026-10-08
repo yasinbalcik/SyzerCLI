@@ -21,6 +21,10 @@ Kurulum: bu klasörde `npm link` → `syzer`
 - Orca kendini güncelleyip yamayı silerse, zamanlanmış görev (10 dk'da bir + oturum açılışında) Orca **kapalıyken** yamayı yeniden uygular. `--shortcut` masaüstüne "Orca (Syzer)" kısayolu da koyar: açmadan önce yamayı denetler.
 - Syzer güncellenince yama kodu da güncellenir (yama sürümü işaretlidir). Orca beklenmedik biçimde değişirse yama atlanır, Orca bozulmaz (`syzer orca status`, günlük: `~/.syzercli/orca/patch.log`).
 
+## Giriş her zaman açık
+
+Ajan çalışırken terminalin altında sabit bir alan kalır: durum satırı, çalışan alt ajanların canlı satırları (görev, son araç, adım, süre), sıradaki mesajlar ve giriş satırı. Çalışırken yeni mesaj yazıp Enter'a basarsan sıraya girer ve tur bitince çalışır; Ctrl+C yazılan metni siler, boşsa yanıtı durdurur. Kapatmak için `SYZER_NO_DOCK=1`.
+
 ## Alt ajanlar ve Orca işçileri
 
 - `spawn_agent`: ana oturumun içinde çalışan alt ajanlar (paralel). Çalışırken her ajan canlı bir satırda görünür (görev, son araç çağrısı, adım sayısı, süre). Ayrıntıları görmek için sohbette `/runs` (liste) ve `/run <no>` (görev, her araç çağrısı ve sonucu, rapor); web arayüzünde alt ajan kartına tıklayınca açılır.
