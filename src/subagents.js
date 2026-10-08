@@ -76,12 +76,12 @@ async function spawn(parent, call, signal) {
   const po = parent.out;
   po.agentStart && po.agentStart(id, label);
   const hooks = require('./orca-hooks');
-  hooks.subagentStart({ id: `syz-${process.pid}-${id}`, kind: agent.name });
   const t0 = Date.now();
   const run = { id, label, agent: agent.name, prompt: a.prompt, steps: [], report: '', live: '', chars: 0, ok: false };
   parent.runs = parent.runs || [];
   parent.runs.push(run);
   try {
+    hooks.subagentStart({ id: `syz-${process.pid}-${id}`, kind: agent.name });
     const sub = makeSub(parent, agent, label, id, run);
     const r = await limited(parent.cfg.subagentConcurrency || 3, () => {
       po.agentRun && po.agentRun(id);

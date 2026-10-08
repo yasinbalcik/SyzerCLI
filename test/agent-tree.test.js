@@ -194,3 +194,12 @@ test('trackOut calls wrapped originals', () => {
   o.agentStart(1, 'a: b'); o.agentUpdate(1, 'x', 1, 5); o.agentDone(1, { ok: true }); o.warn('w');
   assert.deepEqual(calls.map((c) => c[0]), ['agentStart', 'agentUpdate', 'agentDone', 'warn']);
 });
+
+test('trackOut orca worker id goes queued -> running with orca flag', () => {
+  const st = createStore(); const { o } = fakeOut(); trackOut(o, st);
+  o.agentStart('wdeadbeef', 'worker: Syzer: t');
+  assert.equal(snapOf(st).nodes[0].status, 'queued');
+  o.agentRun('wdeadbeef');
+  const n = snapOf(st).nodes[0];
+  assert.equal(n.status, 'running'); assert.equal(n.orca, true);
+});

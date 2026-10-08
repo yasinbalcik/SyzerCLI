@@ -76,13 +76,14 @@ async function spawnWorker(parent, call, signal) {
   const po = parent.out;
   po.agentStart && po.agentStart(`w${id}`, `worker: ${title}`);
   const hooks = require('./orca-hooks');
-  hooks.subagentStart({ id: `syz-w-${id}`, kind: 'syzer-worker' });
+  po.agentRun && po.agentRun(`w${id}`);
   po.agentUpdate && po.agentUpdate(`w${id}`, 'Orca sekmesinde çalışıyor');
   const t0 = Date.now();
   const run = { id: `w${id}`, label: title, agent: 'syzer-worker', prompt: a.prompt, steps: [], report: '', ok: false };
   parent.runs = parent.runs || [];
   parent.runs.push(run);
   try {
+    hooks.subagentStart({ id: `syz-w-${id}`, kind: 'syzer-worker' });
     let report = '';
     let lastErr = '';
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
