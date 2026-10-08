@@ -100,6 +100,9 @@ class Editor {
     return new Promise((resolve) => { this.pending = resolve; });
   }
 
+  // Dışarıdan tuş enjekte et (splash sırasında yakalanan tuşları yeniden oynatmak için)
+  inject(str, key = {}) { return this._key(str, key); }
+
   // --- olaylar ---
   _key(str, key = {}) {
     if (key.name === 'paste-start') { this.pasting = true; this.pasteBuf = ''; return; }

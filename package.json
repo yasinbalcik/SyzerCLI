@@ -13,7 +13,7 @@
   },
   "license": "MIT",
   "scripts": {
-    "test": "node --test test/core.test.js test/bridge.test.js test/agent-tree.test.js test/dock-tree.test.js test/api-stall.test.js test/logo3d.test.js",
+    "test": "node --test test/core.test.js test/bridge.test.js test/agent-tree.test.js test/dock-tree.test.js test/api-stall.test.js test/logo3d.test.js test/splash.test.js",
     "pack": "node scripts/pack.js",
     "build:exe": "node scripts/build-exe.js"
   },
