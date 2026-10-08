@@ -1,7 +1,38 @@
 # SyzerCLI
 
-OpenRouter **ve** NVIDIA için, çoklu API key havuzu, otomatik key/model yedekleme, ajan araçları, subagent'lar, MCP ve
-yerel proxy sunan terminal ajanı. Komut: `syzer` (aynı zamanda `syzercli`).
+> **TR:** OpenRouter ve NVIDIA modelleriyle çalışan, dosya okuyup yazabilen, komut çalıştırabilen terminal yapay zekâ ajanı.
+> **EN:** A terminal AI coding agent for OpenRouter and NVIDIA models: reads and edits files, runs commands, spawns parallel subagents.
+
+## Nedir? / What is it?
+
+SyzerCLI, terminalde (ve isteğe bağlı yerel web arayüzünde) çalışan bir kodlama ajanıdır. Bir görev verirsin; ajan projeni okur, dosyaları düzenler, komut çalıştırır, gerekirse paralel alt ajanlar başlatır ve sonucu raporlar. Ücretsiz modellerle (ör. `nvidia/nemotron-3-ultra-550b-a55b:free`) rahatça kullanılabilsin diye **çoklu API key havuzu** ve **otomatik yedekleme** üzerine kuruludur.
+
+**Neden kullanılır?**
+- **Key havuzu:** Birden çok OpenRouter/NVIDIA key'i ekle; biri limite takılınca (402/403/429) otomatik sıradakine geçer.
+- **Otomatik yedek model:** Sunucu yoğunluğunda (5xx) önce aynı key'le yeniden dener, sonra yedek modele geçer.
+- **Güvenli ajan:** Her araç çağrısı için izin modu (`ask` / `auto` / `readonly`), allow/deny kuralları, hook'lar, git checkpoint ve `/undo`.
+- **Alt ajanlar:** `spawn_agent` ile bağımsız işler paralel yürür; canlı satırlarla izlenir.
+- **Entegrasyonlar:** MCP istemcisi/sunucusu, OpenAI uyumlu yerel proxy, [Orca](https://github.com/stablyai/orca) entegrasyonu.
+
+**Gereksinimler:** Node.js 18+ (exe kullanıyorsan gerekmez), en az bir OpenRouter (`sk-or-v1-…`) veya NVIDIA (`nvapi-…`) API key'i.
+
+## 60 saniyede başla
+
+```powershell
+irm https://raw.githubusercontent.com/yasinbalcik/SyzerCLI/main/install.ps1 | iex   # kur
+syzer                                   # ilk açılışta sihirbaz: dil, sağlayıcı, key, izin modu
+```
+
+```
+syzer key add sk-or-v1-... nvapi-...    # key'ler (sağlayıcı biçimden tanınır)
+syzer usage                             # key başına kalan hak
+syzer                                   # etkileşimli sohbet
+syzer -y "src/ altındaki TODO'ları listele"   # tek seferlik, onay istemeden (betikler için)
+syzer --resume <id>                     # kayıtlı oturuma devam (veya: syzer -c)
+syzer web                               # yerel web arayüzü
+```
+
+Sohbette `/help` tüm komutları gösterir; `/plan` önce salt-okunur plan çıkarır, `/go` ile uygulatırsın.
 
 ## Hızlı kurulum
 
