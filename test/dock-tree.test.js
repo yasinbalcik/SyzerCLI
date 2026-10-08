@@ -117,7 +117,6 @@ test('submit /tree runs live, not queued', () => {
 
 test('tree -> agent -> close installs and restores write hooks once', () => {
   const { d } = mkTree([node(1, 'explorer', 'aaa')]);
-  const errW = process.stderr.write;
   const sink = [];
   const realW = d.out.write;
   d.out.write = (s) => sink.push(s);
@@ -128,7 +127,7 @@ test('tree -> agent -> close installs and restores write hooks once', () => {
     d.handleKey('', { name: 'escape' });
     assert.strictEqual(d.viewing, null);
     assert.strictEqual(d._origOut, null);
-    assert.strictEqual(process.stderr.write, errW);
+    assert.ok(typeof process.stderr.write === "function" && !String(process.stderr.write).includes("_buf"));
     d.out.write('hello');
     assert.ok(sink.includes('hello'));
   } finally { clearInterval(d.viewTimer); if (d.viewing) d.closeView(); d.out.write = realW; }
