@@ -57,6 +57,12 @@ const SYZER_EVENT = 'var __syzerEvMap={Prompt:`pre_llm_call`,ToolStart:`pre_tool
 
 const SYZER_DIR = 'require(`node:path`).join(require(`node:os`).homedir(),`.syzercli`,`sessions`)';
 
+const fsx = require('fs');
+const pathx = require('path');
+const snippet = (n) => fsx.readFileSync(pathx.join(__dirname, 'orca-snippets', n), 'utf8').trim();
+
+const analyticsEdits = (cmd) => require('./orca-analytics-edits').analyticsEdits(cmd);
+
 function edits(cmd, ICON, marker) {
   const icon = (size) => `(0,J.jsx)(\`img\`,{src:\`${ICON}\`,width:${size},height:${size},alt:\`Syzer\`,style:{borderRadius:4}})`;
   const CFG = 'jcode:{detectCmd:`jcode`,launchCmd:`jcode`,expectedProcess:`jcode`,promptInjectionMode:`stdin-after-start`}};';
@@ -101,6 +107,17 @@ function edits(cmd, ICON, marker) {
     { group: 'history', file: 'out/main/session-scanner-service-entry.js', from: 'function bi(', to: `${SUBS}function bi(` },
     { group: 'history', file: 'out/main/index.js', from: 'fRi(e){if(!e||e.agent!==`claude`&&e.agent!==`omp`||', to: 'fRi(e){if(!e||e.agent!==`claude`&&e.agent!==`omp`&&e.agent!==`syzer`||' },
     { group: 'history', file: 'out/main/index.js', from: '(e.agent===`claude`?Xe.y({wslHomeDirs:n}):Xe.x({wslHomeDirs:n}))', to: `(e.agent===\`syzer\`?[${SYZER_DIR}]:e.agent===\`claude\`?Xe.y({wslHomeDirs:n}):Xe.x({wslHomeDirs:n}))` },
+
+    // ---- keys: Ayarlar → AI Provider Accounts içinde "Syzer" bölümü (key listesi, seç, sil, ekle) ----
+    { group: 'keys', file: 'out/main/index.js', from: 'function lta(e){I.ipcMain.handle(`minimaxCredentials:getStatus`', to: snippet('keys-main.js').split('__SYZER_CMD__').join(JSON.stringify(cmd)) + 'function lta(e){__syzerReg();I.ipcMain.handle(`minimaxCredentials:getStatus`' },
+    { group: 'keys', file: 'out/preload/index.js', from: 'const minimaxCredentialsApi = {', to: 'const syzerKeysApi = {list:()=>electron.ipcRenderer.invoke("syzerKeys:list"),add:(t)=>electron.ipcRenderer.invoke("syzerKeys:add",t),remove:(p,i)=>electron.ipcRenderer.invoke("syzerKeys:remove",p,i),use:(p,i)=>electron.ipcRenderer.invoke("syzerKeys:use",p,i)};\nconst minimaxCredentialsApi = {' },
+    { group: 'keys', file: 'out/preload/index.js', from: '\tminimaxCredentials: minimaxCredentialsApi,', to: '\tsyzerKeys: syzerKeysApi,\n\tminimaxCredentials: minimaxCredentialsApi,' },
+    { group: 'keys', glob: /^out\/renderer\/assets\/useSettingsNavigationMetadata-.*\.js$/, from: ',ct=S(()=>[...Qe(),', to: ',ct=S(()=>[{title:"Syzer API keys",description:"Manage Syzer OpenRouter and NVIDIA API keys.",keywords:["syzer","api key","openrouter","nvidia","key"]},...Qe(),' },
+    { group: 'keys', glob: /^out\/renderer\/assets\/Settings-.*\.js$/, from: 'function Xm({provider:e,target:t}){', to: snippet('keys-renderer.js') + 'function Xm({provider:e,target:t}){' },
+    { group: 'keys', glob: /^out\/renderer\/assets\/Settings-.*\.js$/, from: 'ze=[!s||/opencode|devin|account/i.test(s)?', to: 'ze=[!s||/syzer|openrouter|nvidia|api key/i.test(s)?(0,Q.jsx)(__SyzerKeys,{},`syzer`):null,!s||/opencode|devin|account/i.test(s)?' },
+
+    // ---- analytics: Ayarlar → Stats & Usage → "Syzer" filtresi (kendi sağlayıcı servisi, kendi kart/ısı haritası) ----
+    ...analyticsEdits(cmd),
   ];
 }
 

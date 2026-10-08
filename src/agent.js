@@ -63,7 +63,7 @@ async function callModel(session, signal, hooks) {
           onRetry: (status, delay) => out.warn(t('retrying', status, delay)),
         },
       );
-      stats.record({ model, keyIndex: index, tokens: result.usage?.total_tokens });
+      stats.record({ model, keyIndex: index, tokens: result.usage?.total_tokens, usage: result.usage, cwd: session.cwd });
       return { res: result, index, model };
     } catch (err) {
       if (!(err instanceof KeyError)) throw err;

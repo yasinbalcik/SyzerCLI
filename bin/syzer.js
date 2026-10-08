@@ -58,6 +58,7 @@ function parseArgs(argv) {
     else if (a === '--check') f.check = true;
     else if (a === '--no-open') f.noOpen = true;
     else if (a === '--quiet') f.quiet = true;
+    else if (a === '--usage-analytics') f.usageAnalytics = true;
     else if (a === '--prompt-file') f.promptFile = argv[++i];
     else if (a === '--title') f.title = argv[++i];
     else if (a === '--out') f.outFile = argv[++i];
@@ -152,6 +153,14 @@ async function main() {
 
   const [cmd, sub, ...more] = f.rest;
 
+  if ((cmd === 'key' || cmd === 'keys') && f.json) { // makine okunur çıktı (Orca vb.)
+    const kj = require('../src/keys-json');
+    const out = (o) => console.log(JSON.stringify(o));
+    if (sub === 'add') return out(await kj.add(more.join(String.fromCharCode(10)) || (process.stdin.isTTY ? '' : await readStdin())));
+    if (sub === 'remove' || sub === 'rm') return out(kj.remove(f.provider || cfg.provider, more[0]));
+    if (sub === 'use') return out(kj.use(f.provider || cfg.provider, more[0]));
+    return out(kj.listAll());
+  }
   if (cmd === 'key' || cmd === 'keys') {
     switch (sub) {
       case 'add': {
@@ -191,6 +200,7 @@ async function main() {
   }
   if (cmd === 'allow' || cmd === 'deny') return cmds2.ruleAdd(process.cwd(), settingsMod.load(process.cwd()), cmd, [sub, ...more].filter(Boolean).join(' '));
   if (cmd === 'fallback') return cmds.fallbackSet(cfg, [sub, ...more].filter(Boolean));
+  if (cmd === 'stats' && f.usageAnalytics) return console.log(JSON.stringify(require('../src/analytics').build()));
   if (cmd === 'stats') return cmds.statsShow();
   if (cmd === 'serve') return require('../src/server').start({ port: Number(f.port) || 8787, host: f.host || '127.0.0.1', token: f.token || null });
   if (cmd === 'mcp') {

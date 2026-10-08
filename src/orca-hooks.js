@@ -1,6 +1,6 @@
 'use strict';
 // Orca agent-status reporter for Syzer. CommonJS, no deps.
-// Posts to Orca's local hook server as source "hermes" (see report); Orca shows the
+// Posts to Orca's local hook server on its own route /hook/syzer; Orca shows the
 // pane as working / waiting / done. Silent no-op outside Orca. Never throws, never
 // blocks longer than TIMEOUT_MS per event (events are sent serially to keep order).
 const http = require('http');
