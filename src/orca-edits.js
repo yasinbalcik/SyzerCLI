@@ -49,11 +49,8 @@ const SUBS = 'async function __syzerSubs(parent){' +
   'out.sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));return{sessions:out,issues}}\n';
 
 
-// Syzer olay ayrıştırıcısı (Orca ana süreç kapsamındaki yardımcıları kullanır: foe, eoe, yse, An, Bn, zn, kn, un)
-const SYZER_EVENT = 'var __syzerEvMap={Prompt:`pre_llm_call`,ToolStart:`pre_tool_call`,ToolEnd:`post_tool_call`,Waiting:`pre_approval_request`,Resumed:`post_approval_response`,Done:`post_llm_call`,End:`on_session_end`},__syzerLead=new WeakMap;' +
-  'function __syzerEvent(e,t,n,r,i){let a=__syzerLead.get(e);if(a||(a=new Map,__syzerLead.set(e,a)),t===`SubagentStart`||t===`SubagentStop`){let o=foe(e,t,n,r,i);return o?(t===`SubagentStop`&&a.get(r)===`done`&&o.state===`working`&&!(o.subagents||[]).some(e=>e.state===`working`)&&(o={...o,state:`done`}),{...o,agentType:`syzer`}):null}' +
-  'let o=typeof t==`string`?__syzerEvMap[t]:void 0;if(!o)return null;let s=yse[o],c=An(e,r,Bn(`hermes`,o,i),{resetOnNewTurn:zn(`hermes`,o)});' +
-  'return t===`End`?(a.delete(r),e.claudeSubagentRosterByPaneKey.delete(r)):a.set(r,s),un({state:s,prompt:kn(e,r,n,{resetOnNewTurn:zn(`hermes`,o)}),agentType:`syzer`,toolName:c.toolName,toolInput:c.toolInput,interactivePrompt:c.interactivePrompt,lastAssistantMessage:c.lastAssistantMessage,lastAssistantMessageIsToolOutput:c.lastAssistantMessageIsToolOutput,subagents:eoe(e.claudeSubagentRosterByPaneKey.get(r))})}';
+// Syzer olay ayrıştırıcısı: kendi durum tablosu ve alan çıkarımı; Orca'dan yalnızca genel şema normalleştiricisini (un) kullanır
+const SYZER_EVENT = require('./orca-snippets/syzer-event').SYZER_EVENT;
 
 const SYZER_DIR = 'require(`node:path`).join(require(`node:os`).homedir(),`.syzercli`,`sessions`)';
 
@@ -62,6 +59,12 @@ const pathx = require('path');
 const snippet = (n) => fsx.readFileSync(pathx.join(__dirname, 'orca-snippets', n), 'utf8').trim();
 
 const analyticsEdits = (cmd) => require('./orca-analytics-edits').analyticsEdits(cmd);
+
+// Orca yeniden açılınca Syzer sekmesinin geri gelmesi: oturum kimliği kaydı + `syzer --resume <id>` (ayrı dosya)
+function restoreEdits() {
+  const { patches } = require('./orca-edits-restore');
+  return patches.map((p) => ({ group: 'restore', glob: new RegExp(p.glob.source.replace(/^\^/, '^out\\/'), p.glob.flags), from: p.from, to: p.to }));
+}
 
 function edits(cmd, ICON, marker) {
   const icon = (size) => `(0,J.jsx)(\`img\`,{src:\`${ICON}\`,width:${size},height:${size},alt:\`Syzer\`,style:{borderRadius:4}})`;
@@ -98,8 +101,8 @@ function edits(cmd, ICON, marker) {
     { group: 'history', glob: /^out\/main\/chunks\/session-scanner-opencode-sqlite-open-.*\.js$/, from: 'muse:`Muse`,jcode:`Jcode`', to: 'muse:`Muse`,jcode:`Jcode`,syzer:`Syzer`' },
     { group: 'history', glob: /^out\/renderer\/assets\/ai-vault-types-.*\.js$/, from: '`kimi`,`muse`,`jcode`]', to: '`kimi`,`muse`,`jcode`,`syzer`]' },
     { group: 'history', glob: /^out\/renderer\/assets\/ai-vault-types-.*\.js$/, from: 'jcode:`Jcode`', to: 'jcode:`Jcode`,syzer:`Syzer`' },
-    { group: 'history', glob: /^out\/main\/chunks\/session-scanner-opencode-sqlite-open-.*\.js$/, from: RESUME, to: `case\`syzer\`:${RESUME}` },
-    { group: 'history', glob: /^out\/renderer\/assets\/ai-vault-session-resume-preparation-.*\.js$/, from: RESUME, to: `case\`syzer\`:${RESUME}` },
+    { group: 'history', glob: /^out\/main\/chunks\/session-scanner-opencode-sqlite-open-.*\.js$/, from: RESUME, to: RESUME + ';case`syzer`:return`${t} --resume ${n}`' },
+    { group: 'history', glob: /^out\/renderer\/assets\/ai-vault-session-resume-preparation-.*\.js$/, from: RESUME, to: RESUME + ';case`syzer`:return`${t} --resume ${n}`' },
     { group: 'history', glob: /^out\/main\/chunks\/codex-rollout-session-meta-.*\.js$/, from: '"prime-agent":{rootDirs:(e,t)=>x(e.primeAgentSessionsDir??re,t,[`.prime`,`agent`,`sessions`]),extensions:[`.jsonl`]},', to: `"prime-agent":{rootDirs:(e,t)=>x(e.primeAgentSessionsDir??re,t,[\`.prime\`,\`agent\`,\`sessions\`]),extensions:[\`.jsonl\`]},syzer:{rootDirs:()=>[${SYZER_DIR}],extensions:[\`.json\`],directoryPredicate:()=>!1},` },
     { group: 'history', glob: /^out\/main\/chunks\/session-scanner-service-protocol-.*\.js$/, from: 'case`jcode`:return ec(e.file,t,n)}}', to: 'case`jcode`:return ec(e.file,t,n);case`syzer`:return __syzerParse(e.file,t,n)}}' },
     { group: 'history', glob: /^out\/main\/chunks\/session-scanner-service-protocol-.*\.js$/, from: 'async function fc(', to: `${PARSER}async function fc(` },
@@ -118,6 +121,9 @@ function edits(cmd, ICON, marker) {
 
     // ---- analytics: Ayarlar → Stats & Usage → "Syzer" filtresi (kendi sağlayıcı servisi, kendi kart/ısı haritası) ----
     ...analyticsEdits(cmd),
+
+    // ---- restore: Orca yeniden başlatılınca Syzer oturumunun geri yüklenmesi ----
+    ...restoreEdits(),
   ];
 }
 

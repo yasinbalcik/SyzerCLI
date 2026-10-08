@@ -45,7 +45,7 @@ const edits = [
   P('statusbar', SB, 'e===`cursor`?`Cursor`:e}function dt(e)', 'e===`cursor`?`Cursor`:e===`syzer`?`Syzer`:e}function dt(e)'),
   P('statusbar', SB, 'e===`kimi`?(0,J.jsx)(G,{agent:`kimi`,size:13})', 'e===`syzer`?' + SZ_ICON(13) + ':e===`kimi`?(0,J.jsx)(G,{agent:`kimi`,size:13})'),
   P('statusbar', SB, 'case`kimi`:return`K`;', 'case`kimi`:return`K`;case`syzer`:return`S`;'),
-  P('statusbar', SB, 'case`antigravity`:case`kimi`:return null;', 'case`antigravity`:case`kimi`:case`syzer`:return null;'),
+  P('statusbar', SB, 'case`antigravity`:case`kimi`:return null;', 'case`antigravity`:case`kimi`:return null;case`syzer`:return null;'),
   P('statusbar', SB, 'cursor:H,zcode:U}=r,de=_.includes(', 'cursor:H,zcode:U,syzer:__SZ}=r,de=_.includes('),
   P('statusbar', SB, 'be=$(`zcode`,U,W),xe=fe', 'be=$(`zcode`,U,W),__szd=$(`syzer`,__SZ,W),xe=fe'),
   P('statusbar', SB, '(r.zcodePlanApiKeyConfigured||K(`zcode`,S)),je=', '(r.zcodePlanApiKeyConfigured||K(`zcode`,S)),__szv=__szd!==null&&_.includes(`syzer`),je='),

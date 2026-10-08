@@ -100,6 +100,7 @@ async function runTurn(session, userContent, signal) {
   if (session.canSpawn !== false || !session.agentName) session.cpDone = false; // her tur için yeni git checkpoint hakkı
   session.messages.push({ role: 'user', content: userContent });
   const top = !session.agentName; // Orca durum olayları yalnızca ana oturum için
+  if (top) { hooks.setSession(session.sessionId); try { require('./sessions').save(session); } catch { /* önemsiz */ } } // oturum dosyası ilk olaydan önce diskte olsun
   if (top) hooks.promptSubmitted(typeof userContent === 'string' ? userContent : (userContent.find((p) => p.type === 'text') || {}).text || '');
 
   const totals = { tokens: 0, ms: 0, keyIndex: -1, model: session.model, toolCalls: 0 };
