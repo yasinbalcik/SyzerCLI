@@ -200,7 +200,7 @@ async function start(cfg, opts = {}, io = {}) {
   };
 
   const s = createSession(cfg, { ...opts, canAsk: true, confirm, out: makeOut() });
-  if (opts.resumeId) { const sv = sessions.find(opts.resumeId); if (sv) { if (sv.cwd && sv.cwd !== s.cwd) console.log(C.yellow(`⚠ ${sv.cwd}`)); resume(s, sv); } else console.log(C.yellow(t('unknown_cmd', `--resume ${opts.resumeId}`))); }
+  if (opts.resumeId) { const sv = sessions.find(opts.resumeId); if (sv) { if (sv.cwd && sv.cwd !== s.cwd) console.log(C.yellow(`⚠ ${sv.cwd}`)); resume(s, sv); } else console.log(C.yellow(`Oturum bulunamadı / Session not found: ${opts.resumeId}  (${require('./config').DIR})`)); }
   else if (opts.resume) { const last = sessions.list(s.cwd)[0]; if (last) resume(s, last); }
   if (Object.keys(s.settings.mcpServers).length) {
     s.mcp = await new McpManager().load(s.settings.mcpServers, s.cwd);
