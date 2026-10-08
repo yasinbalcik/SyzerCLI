@@ -3,7 +3,7 @@
 // Karşılama ekranı: alternatif ekranda dönen 3D logo; ilk tuşta kapanır.
 // Terminal güvenliği öncelikli: leave() her yolda tam bir kez çalışır (tuş, Ctrl+C/D, hata, process 'exit').
 // Kullanıcının splash sırasında bastığı tuşlar toplanıp `keys` ile geri verilir (REPL editöre enjekte eder).
-const { vlen } = require('./ui');
+const { vlen, charWidth } = require('./ui');
 const { renderFrame } = require('./logo3d');
 
 const ENTER = '\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H';
@@ -11,7 +11,9 @@ const LEAVE = '\x1b[?25h\x1b[?1049l';
 const DIM = '\x1b[2m';
 const RST = '\x1b[0m';
 
-let active = false; // açıkken ikinci show() yok sayılır
+// Modül düzeyinde paylaşılan bayrak: açıkken ikinci show() (swallowKey dahil) yok sayılır.
+let active = false;
+const LATE_MS = 40; // ilk tuştan sonra gecikmeli gelen tuşları (parçalı yapıştırma) toplama penceresi
 
 const MIN_ROWS = 24;
 const MIN_COLS = 50;
@@ -28,6 +30,23 @@ function eligibleForCommand({ out, input }) {
   return !!(out && input && out.isTTY && input.isTTY && sizeOk(out));
 }
 
+// Görünür genişliğe göre keser (ANSI dizilerini bozmaz); renkli metnin içinde kesildiyse sıfırlama ekler.
+function fit(s, n) {
+  s = String(s);
+  if (n <= 0) return '';
+  if (vlen(s) <= n) return s;
+  let w = 0; let o = ''; let cut = false;
+  const re = /\[[0-9;?]*[A-Za-z]|[^]/gu;
+  for (const m of s.matchAll(re)) {
+    const tok = m[0];
+    if (tok[0] === '' && tok.length > 1) { o += tok; continue; }
+    const cw = charWidth(tok);
+    if (w + cw > n) { cut = true; break; }
+    w += cw; o += tok;
+  }
+  return cut ? o + '[0m' : o;
+}
+
 const defaultFrame = (color) => (t, cols, rows) => renderFrame({ t, cols, rows, color });
 
 function show({ out = process.stdout, input = process.stdin, title = '', hint = '', fps = 20, color = true, swallowKey = false, frame = null } = {}) {
@@ -41,6 +60,7 @@ function show({ out = process.stdout, input = process.stdin, title = '', hint = 
     let closing = false; // ilk tuş/hata geldi, ek tuşlar toplanıyor
     let exit = false;
     let timer = null;
+    let lateTimer = null;
     const t0 = Date.now();
 
     const safeWrite = (s) => { try { out.write(s); } catch { /* terminal gitmiş olabilir */ } };
@@ -53,12 +73,13 @@ function show({ out = process.stdout, input = process.stdin, title = '', hint = 
       left = true;
       if (timer) clearInterval(timer);
       timer = null;
-      if (typeof out.off === 'function') out.off('resize', draw);
+      if (typeof out.off === 'function') out.off('resize', onResize);
       process.off('exit', onExit);
       safeWrite(LEAVE);
     };
 
     const finish = () => {
+      if (lateTimer) clearTimeout(lateTimer);
       input.off('keypress', onKey);
       active = false;
       resolve({ exit, keys: exit ? [] : keys });
@@ -69,30 +90,36 @@ function show({ out = process.stdout, input = process.stdin, title = '', hint = 
       if (closing) return;
       closing = true;
       leave();
-      setImmediate(finish);
+      lateTimer = setTimeout(finish, LATE_MS);
     };
 
-    function draw() {
+    function draw(clear) {
       if (left) return;
       try {
         const cols = out.columns || 80;
         const rows = out.rows || 24;
         const logoRows = Math.max(1, rows - 4);
         const lines = makeFrame((Date.now() - t0) / 1000, cols, logoRows) || [];
-        let s = '\x1b[2J';
-        if (title) s += `\x1b[1;${Math.max(1, Math.floor((cols - vlen(title)) / 2) + 1)}H${title}`;
         const top = 3 + Math.max(0, Math.floor((logoRows - lines.length) / 2));
+        const cells = new Array(rows).fill('');
+        const put = (r, c, txt) => { if (r >= 1 && r <= rows) cells[r - 1] = `[${r};${c}H${txt}`; };
+        if (title) { const tt = fit(title, cols); put(1, Math.max(1, Math.floor((cols - vlen(tt)) / 2) + 1), tt); }
         lines.forEach((ln, i) => {
-          if (!ln) return;
-          const c = Math.max(1, Math.floor((cols - vlen(ln)) / 2) + 1);
-          s += `\x1b[${top + i};${c}H${ln}`;
+          if (!ln || top + i > rows - 1) return;
+          const l = fit(ln, cols);
+          put(top + i, Math.max(1, Math.floor((cols - vlen(l)) / 2) + 1), l);
         });
-        s += `\x1b[${rows};1H\u276F ${DIM}${hint}${RST}`;
+        put(rows, 1, `❯ ${DIM}${fit(hint, Math.max(0, cols - 4))}${RST}`);
+        // Ekran yalnız girişte ve yeniden boyutlandırmada silinir; kareler satır satır yerinde yazılır (titreme yok).
+        let s = clear === true ? '[2J' : '';
+        for (let r = 1; r <= rows; r++) s += `[${r};1H[2K` + cells[r - 1];
         out.write(s);
       } catch {
         close(); // çizim hatası: terminal açık kalmasın
       }
     }
+
+    function onResize() { draw(true); }
 
     function onKey(str, key = {}) {
       if (closing) { keys.push({ str, key }); return; }
@@ -105,10 +132,10 @@ function show({ out = process.stdout, input = process.stdin, title = '', hint = 
     try {
       process.on('exit', onExit);
       input.on('keypress', onKey);
-      if (typeof out.on === 'function') out.on('resize', draw);
+      if (typeof out.on === 'function') out.on('resize', onResize);
       out.write(ENTER);
-      draw();
-      if (!left) timer = setInterval(draw, Math.max(1, Math.round(1000 / fps)));
+      draw(false);
+      if (!left) timer = setInterval(() => draw(false), Math.max(1, Math.round(1000 / fps)));
     } catch {
       close();
     }

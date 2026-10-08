@@ -112,12 +112,13 @@ test('show twice', async () => {
 
 test('exit safety: frame throws', async () => {
   const out = mkOut(); const input = mkIn();
+  const exitBefore = process.listenerCount('exit');
   const r = await splash.show({ out, input, fps: 200, frame: () => { throw new Error('boom'); } });
   assert.strictEqual(r.exit, false);
   assert.strictEqual(count(out.buf, '\x1b[?1049l'), 1);
   assert.ok(out.buf.includes('\x1b[?25h'));
   assert.strictEqual(input.listenerCount('keypress'), 0);
-  assert.strictEqual(process.listenerCount('exit') < 50, true);
+  assert.strictEqual(process.listenerCount('exit'), exitBefore);
 });
 
 test('exit safety: write throws later', async () => {
@@ -140,4 +141,71 @@ test('Editor#inject', async () => {
   ed.inject('b', { name: 'b' });
   ed.inject('\r', { name: 'return' });
   assert.strictEqual((await p).text, 'ab');
+});
+
+const ESCRE = /\x1b\[[0-9;?]*[A-Za-z]/g;
+
+test('no per-frame clear; resize clears once', async () => {
+  const out = mkOut(); const input = mkIn();
+  const p = splash.show({ out, input, fps: 200 });
+  const afterEnter = out.buf.length;
+  await wait(60);
+  const frames = out.buf.slice(afterEnter);
+  assert.ok(frames.length > 0);
+  assert.ok(!frames.includes('\x1b[2J'));
+  assert.ok(frames.includes('\x1b[2K'));
+  const mark = out.buf.length;
+  out.emit('resize');
+  assert.strictEqual(count(out.buf.slice(mark, mark + 400), '\x1b[2J') >= 1, true);
+  input.emit('keypress', 'a', { name: 'a' });
+  await p;
+});
+
+test('width clamp', async () => {
+  const out = mkOut({ columns: 50 }); const input = mkIn();
+  const p = splash.show({ out, input, fps: 200, hint: 'h'.repeat(300), title: 't'.repeat(120) });
+  await wait(30);
+  input.emit('keypress', 'a', { name: 'a' });
+  await p;
+  const segs = out.buf.replace(/\x1b\[[0-9;]*H/g, '\n').split('\n');
+  for (const sg of segs) {
+    const clean = sg.replace(ESCRE, '');
+    assert.ok([...clean].length <= 50, `too wide: ${clean.length}`);
+  }
+});
+
+test('late keys window', async () => {
+  const out = mkOut(); const input = mkIn();
+  const p = splash.show({ out, input, fps: 200 });
+  input.emit('keypress', 'a', { name: 'a' });
+  setTimeout(() => input.emit('keypress', 'b', { name: 'b' }), 10);
+  setTimeout(() => input.emit('keypress', 'c', { name: 'c' }), 25);
+  setTimeout(() => input.emit('keypress', 'd', { name: 'd' }), 80);
+  const r = await p;
+  assert.deepStrictEqual(r.keys.map((k) => k.str), ['a', 'b', 'c']);
+  await wait(60);
+  assert.strictEqual(input.listenerCount('keypress'), 0);
+});
+
+test('paste markers passed through', async () => {
+  const out = mkOut(); const input = mkIn();
+  const p = splash.show({ out, input, fps: 200 });
+  input.emit('keypress', undefined, { name: 'paste-start' });
+  input.emit('keypress', 'hello', {});
+  input.emit('keypress', undefined, { name: 'paste-end' });
+  const r = await p;
+  assert.deepStrictEqual(r.keys.map((k) => k.key.name || k.str), ['paste-start', 'hello', 'paste-end']);
+});
+
+test('exit safety: first write (ENTER) throws', async () => {
+  const out = mkOut(); const input = mkIn();
+  const w = out.write; let n = 0;
+  out.write = function (s) { if (n++ === 0) throw new Error('EPIPE'); return w.call(this, s); };
+  const exitBefore = process.listenerCount('exit');
+  const r = await splash.show({ out, input, fps: 200 });
+  assert.strictEqual(r.exit, false);
+  assert.ok(count(out.buf, '\x1b[?1049l') <= 1);
+  assert.strictEqual(input.listenerCount('keypress'), 0);
+  assert.strictEqual(out.listenerCount('resize'), 0);
+  assert.strictEqual(process.listenerCount('exit'), exitBefore);
 });
