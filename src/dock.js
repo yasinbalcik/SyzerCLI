@@ -5,7 +5,7 @@
 // Normal çıktı kaydırma bölgesinde (üstte) akmaya devam eder; kullanıcı yeni mesajı yazıp sıraya koyabilir.
 // Alt ajan listesi: giriş boşken ↓ / ← ile listeye geç, ↑↓ ile seç, Enter ile ajanın CANLI içeriğini aç (tam ekran), Esc/← ile dön.
 const { C, vlen, trunc } = require('./ui');
-const { renderCompact, renderTree } = require('./agent-tree');
+const { renderCompact, renderTree, renderPanel, panelHeight } =require('./agent-tree');
 const { t } = require('./i18n');
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -53,7 +53,13 @@ class Dock {
     });
   }
 
-  need() { return 4 + (this.queue.length ? 1 : 0) + (this.agents.length ? 1 + Math.min(this.agents.length, 6) + 1 : 0); }
+  panelMode() { return this.agents.length > 0 && this.out.rows >= 28 && this.out.columns >= 70; }
+
+  need() {
+    const base = 4 + (this.queue.length ? 1 : 0);
+    if (this.panelMode()) return base + panelHeight(this.agents.length, this.out.rows);
+    return base + (this.agents.length ? 1 + Math.min(this.agents.length, 6) + 1 : 0);
+  }
 
   async begin() {
     if (this.active || !this.supported()) return false;
@@ -333,15 +339,22 @@ class Dock {
       lines.push(C.gray(`${'─'.repeat(Math.max(4, cols - 4 - hint.length - 3))} ${hint} ──`));
       const mark = (i) => (this.sel === i ? C.orange('❯') : ' ');
       let treeRows = null;
+      let panelRows = null;
       try {
         if (this.getTree) {
           const snap = this.getTree();
           const nodes = this.agents.map((a) => snap.nodes.find((n) => n.id === a.id && (n.status === 'queued' || n.status === 'running')));
-          if (nodes.every(Boolean)) treeRows = renderCompact({ ...snap, nodes }, { width: cols - 4, selected: this.sel - 1, now: Date.now() });
+          if (nodes.every(Boolean) && this.panelMode()) {
+            try {
+              panelRows = renderPanel({ ...snap, nodes }, { width: cols - 2, rows: this.h - (4 + (this.queue.length ? 1 : 0)), selected: this.sel - 1, now: Date.now() });
+            } catch { panelRows = null; }
+          }
+          if (!panelRows && nodes.every(Boolean)) treeRows = renderCompact({ ...snap, nodes }, { width: cols - 4, selected: this.sel - 1, now: Date.now() });
         }
       } catch { treeRows = null; }
       const shownAgents = Math.min(this.agents.length, 6);
-      if (treeRows) treeRows.forEach((r, i) => lines.push(` ${i <= shownAgents ? mark(i) : ' '} ${r}`));
+      if (panelRows) lines.push(...panelRows);
+      else if (treeRows) treeRows.forEach((r, i) => lines.push(` ${i <= shownAgents ? mark(i) : ' '} ${r}`));
       else {
         lines.push(` ${mark(0)} ${this.sel === 0 ? C.bold('● main') : '● main'}`);
         this.agents.slice(0, 6).forEach((a, i) => {

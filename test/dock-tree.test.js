@@ -1,15 +1,16 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
+process.env.FORCE_COLOR = '1'; delete process.env.NO_COLOR; // colors on before ui.js loads (selection test)
 const { Dock } = require('../src/dock');
 require('../src/i18n').setLang('en');
 
 function mk(getTree) {
   let buf = '';
-  const out = { isTTY: true, columns: 100, rows: 30, write(s) { buf += s; } };
+  const out = { isTTY: true, columns: 100, rows: 24, write(s) { buf += s; } };
   const input = { on() {}, off() {}, removeListener() {}, setRawMode() {}, resume() {}, pause() {} };
   const d = new Dock({ editor: { items: [], cur: 0 }, input, out });
-  d.active = true; d.rows = 30;
+  d.active = true; d.rows = 24; // < 28 rows: compact path (panel mode tests use mkPanel)
   d.agents = [{ id: 1, no: 1, kind: 'explorer', label: 'x', t0: Date.now(), steps: 1, tokens: 0 }];
   d.h = d.need();
   d.getTree = getTree;
@@ -152,4 +153,94 @@ test('closeView (used by confirm before prompting) clears viewing', () => {
   d.openTree();
   d.closeView();
   assert.strictEqual(d.viewing, null);
+});
+
+// ---- panel mode ----
+const { panelHeight } = require('../src/agent-tree');
+function mkPanel(n, rows, columns = 100, q = 0) {
+  const nodes = [];
+  for (let i = 1; i <= n; i++) nodes.push(node(i, 'kind' + i, 'lab' + i));
+  const r = mk(() => ({ main: { model: 'mainmodel', effort: 'e' }, log: [], nodes }));
+  r.d.out.rows = rows; r.d.out.columns = columns; r.d.rows = rows;
+  r.d.agents = nodes.map((x) => ({ id: x.id, no: x.id, kind: x.kind, label: 'l', t0: Date.now(), steps: 0, tokens: 0 }));
+  for (let i = 0; i < q; i++) r.d.queue.push({ text: 'q' });
+  r.d.h = r.d.need();
+  return r;
+}
+
+test('panel mode threshold', () => {
+  assert.strictEqual(mkPanel(1, 27).d.panelMode(), false);
+  assert.strictEqual(mkPanel(1, 28, 69).d.panelMode(), false);
+  assert.strictEqual(mkPanel(1, 28, 70).d.panelMode(), true);
+  const e = mkPanel(1, 30); e.d.agents = [];
+  assert.strictEqual(e.d.panelMode(), false);
+});
+
+test('need uses panelHeight in panel mode, old formula outside', () => {
+  const a = mkPanel(3, 30);
+  assert.strictEqual(panelHeight(3, 30), 9);
+  assert.strictEqual(a.d.need(), 4 + 9);
+  const b = mkPanel(7, 36);
+  assert.strictEqual(panelHeight(7, 36), 16);
+  assert.strictEqual(b.d.need(), 4 + 16);
+  assert.strictEqual(mkPanel(3, 30, 100, 1).d.need(), 4 + 1 + 9);
+  assert.strictEqual(mkPanel(3, 27).d.need(), 4 + 1 + 3 + 1);
+});
+
+test('draw panel shows box and model, no tree glyphs; rows 27 keeps tree', () => {
+  const p = mkPanel(2, 30);
+  p.d.draw();
+  assert.match(p.get(), /╭/);
+  assert.match(p.get(), /mainmodel/);
+  assert.doesNotMatch(p.get(), /[├└]/);
+  const c = mkPanel(2, 27);
+  c.d.draw();
+  assert.match(c.get(), /[├└]/);
+});
+
+test('draw panel fills exactly this.h lines and cuts nothing', () => {
+  for (const [n, rows] of [[3, 30], [7, 36], [9, 30]]) {
+    const p = mkPanel(n, rows, 100, 1);
+    p.d.draw();
+    const drawn = p.get().split('\x1b[2K').length - 1;
+    assert.strictEqual(drawn, p.d.h);
+    assert.strictEqual(p.d.h, p.d.need());
+    const txt = strip(p.get());
+    const bottoms = (txt.match(/╰/g) || []).length;
+    const tops = (txt.match(/╭/g) || []).length;
+    assert.strictEqual(tops, bottoms);
+  }
+});
+
+test('draw panel highlights the selected card edge only', () => {
+  const p = mkPanel(3, 30);
+  p.d.sel = 2;
+  p.d.draw();
+  const orange = '\x1b[38;5;208m';
+  const hasOrange = (s) => s.includes(orange);
+  const topLine = p.get().split('\x1b[2K').find((l) => (l.match(/╭/g) || []).length >= 3 && /kind1/.test(strip(l)) === false) || '';
+  const lineWith = p.get().split('\x1b[2K').filter((l) => /╭/.test(strip(l)));
+  assert.ok(lineWith.length >= 2);
+  const row = lineWith[lineWith.length - 1];
+  const segs = row.split('╭').slice(1);
+  assert.strictEqual(segs.length, 3);
+  const edgeColors = row.split(/(?=\x1b\[[0-9;]*m╭)/).filter((x) => x.includes('╭')).map((x) => hasOrange(x.slice(0, x.indexOf('╭') + 1)));
+  assert.deepStrictEqual(edgeColors.slice(-3), [false, true, false]);
+  void topLine;
+  const q = mkPanel(3, 30); q.d.sel = 0; q.d.draw();
+  const rowQ = q.get().split('\x1b[2K').filter((l) => /╭/.test(strip(l))).pop();
+  const colsQ = rowQ.split(/(?=\x1b\[[0-9;]*m╭)/).filter((x) => x.includes('╭')).map((x) => hasOrange(x.slice(0, x.indexOf('╭') + 1)));
+  assert.deepStrictEqual(colsQ.slice(-3), [false, false, false]);
+});
+
+test('panel mode falls back when getTree throws or an agent has no node', () => {
+  const p = mkPanel(2, 30);
+  p.d.getTree = () => { throw new Error('x'); };
+  assert.doesNotThrow(() => p.d.draw());
+  assert.doesNotMatch(p.get(), /╭/);
+  assert.match(p.get(), /○/);
+  const q = mkPanel(2, 30);
+  q.d.getTree = () => ({ main: {}, log: [], nodes: [node(1, 'kind1', 'a')] });
+  q.d.draw();
+  assert.doesNotMatch(q.get(), /╭/);
 });
