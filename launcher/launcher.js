@@ -6,7 +6,7 @@ const { createRequire } = require('module');
 const U = require('../src/updater'); //@UPDATER
 
 const argv = process.argv.slice(2);
-const skip = process.env.SYZER_NO_UPDATE || argv.includes('--no-update') || !process.stdout.isTTY || argv[0] === 'mcp' || argv[0] === 'serve';
+const skip = process.env.SYZER_NO_UPDATE || process.env.ORCA_AGENT_LAUNCH_TOKEN || argv.includes('--no-update') || !process.stdout.isTTY || argv[0] === 'mcp' || argv[0] === 'serve';
 const log = (m) => process.stderr.write(`${m}\n`);
 
 async function main() {

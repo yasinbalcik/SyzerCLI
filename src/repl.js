@@ -183,7 +183,7 @@ async function start(cfg, opts = {}, io = {}) {
   if (Object.keys(s.settings.mcpServers).length) {
     s.mcp = await new McpManager().load(s.settings.mcpServers, s.cwd);
   }
-  console.log(banner(s, await supportsReasoning(s.model)));
+  console.log(banner(s, await supportsReasoning(s.model, { cacheOnly: true }))); // açılışta ağ isteği yok
   if (s.mcp) {
     s.mcp.errors.forEach((e) => s.out.warn(t('mcp_fail', e.name, e.message)));
     if (s.mcp.clients.length) console.log(C.gray(t('mcp_loaded', s.mcp.clients.length, s.mcp.defs.length)) + '\n');

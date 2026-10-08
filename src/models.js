@@ -15,14 +15,15 @@ const checkFile = (p) => path.join(config.DIR, `models-check.${p.id}.json`);
 // NVIDIA /models listesinde sohbet dışı modeller de var (embedding, güvenlik, görü…)
 const NOT_CHAT = /embed|rerank|safety|guard|content-safety|topic-control|parse|clip|vlm|vision|vila|neva|paligemma|fuyu|kosmos|riva|cosmos|audio|speech|retriev|bge|gliner|shield|reward|deplot|diffusion|detector|calibration/i;
 
-async function allModels({ refresh = false } = {}) {
+async function allModels({ refresh = false, cacheOnly = false } = {}) {
   const p = providers.current();
   if (!refresh) {
     try {
       const c = JSON.parse(fs.readFileSync(cacheFile(p), 'utf8'));
-      if (Date.now() - c.ts < TTL) return c.data;
+      if (cacheOnly || Date.now() - c.ts < TTL) return c.data; // cacheOnly: bayat olsa da ağa çıkma
     } catch { /* önbellek yok */ }
   }
+  if (cacheOnly) throw new Error('no cache');
   const data = (await getJson('/models', null, 20000, p)).data;
   try {
     fs.mkdirSync(config.DIR, { recursive: true });
@@ -121,10 +122,10 @@ async function supportsImages(id) {
   } catch { return null; }
 }
 
-async function supportsReasoning(id) {
+async function supportsReasoning(id, { cacheOnly = false } = {}) {
   if (providers.current().id !== 'openrouter') return /nemotron-3|reason|think|gpt-oss|r1/i.test(id) ? true : null;
   try {
-    const m = (await allModels()).find((x) => x.id === id);
+    const m = (await allModels({ cacheOnly })).find((x) => x.id === id);
     if (!m) return null;
     const sp = m.supported_parameters || [];
     return sp.includes('reasoning') || sp.includes('reasoning_effort');
