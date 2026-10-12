@@ -3,7 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 const pkg = require('../package.json');
-const { t, setLang } = require('./i18n');
+const { t, setLang, getLang } = require('./i18n');
+const P = require('./prompts');
+const { LIMITS } = require('./limits');
 const { C, box, pad, trunc, spinner, MdStream, vlen } = require('./ui');
 const { usable } = require('./keys');
 const { runTurn } = require('./agent');
@@ -33,7 +35,7 @@ const BUILTIN = ['help', 'model', 'models', 'usage', 'keys', 'lang', 'perm', 'sk
   'effort', 'fallback', 'undo', 'resume', 'stats', 'plan', 'go', 'agents', 'subagent',
   'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web', 'runs', 'run', 'tree', 'budget', 'continue', 'route'];
 const LABEL = { read_file: 'Read', write_file: 'Write', edit_file: 'Update', list_dir: 'List', find_files: 'Find', search_files: 'Search', run_command: 'Run', use_skill: 'Skill', spawn_agent: 'Agent', run_plan: 'Plan' };
-const PLAN_PREFIX = '[PLAN MODE] Use read-only tools only. Do NOT modify anything. Investigate, then answer with a concise numbered plan and ask for approval at the end.\n\n';
+const planPrefix = () => P.planPrefix(getLang());
 
 function banner(s, reasoning) {
   const cols = process.stdout.columns || 80;
@@ -140,7 +142,7 @@ function expandMentions(text, cwd) {
     try {
       if (!fs.statSync(p).isFile()) continue;
       const body = fs.readFileSync(p, 'utf8');
-      extra.push(`<file path="${rel}">\n${body.length > 30000 ? body.slice(0, 30000) + '\n…(truncated)' : body}\n</file>`);
+      extra.push(`<file path="${rel}">\n${body.length > LIMITS.mentionFile ? body.slice(0, LIMITS.mentionFile) + '\n…(truncated)' : body}\n</file>`);
     } catch { /* dosya değil: @ olduğu gibi kalır */ }
   }
   return extra.length ? `${text}\n\n${extra.join('\n\n')}` : text;
@@ -383,7 +385,7 @@ async function start(cfg, opts = {}, io = {}) {
     };
     try {
       const win = await windowOf(s.model); // otomatik sıkıştırma runTurn başında (agent.js, compact.js eşiği)
-      const content = await buildContent((s.plan ? PLAN_PREFIX : '') + expandMentions(text, s.cwd), images, s.model, s.out);
+      const content = await buildContent((s.plan ? planPrefix() : '') + expandMentions(text, s.cwd), images, s.model, s.out);
       docked = await dock.begin();
       if (docked) s.out.setDock(dock);
       let r;

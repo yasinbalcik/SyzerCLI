@@ -4,11 +4,12 @@
 // her dalgada paralel alt ajanlarla çalıştırır. Ana model orkestratördür; alt ajanlar kendi (ucuz) modelleriyle çalışır.
 const { renderTodos } = require('./tools');
 const { trunc, head } = require('./ui');
+const P = require('./prompts');
+const { LIMITS } = require('./limits');
 
-const MAX_DEP_CONTEXT = 2500; // bağımlı ajana aktarılan rapor başına karakter
-const MAX_REPORT = 3500; // orkestratöre dönen rapor başına karakter
+const MAX_REPORT = LIMITS.orchestraReport; // orkestratöre dönen rapor başına karakter
+// (bağımlı ajana aktarılan rapor limiti: LIMITS.dependencyContext)
 const MAX_WAVES = 12;
-const RULES = '\n\n(Rules: do only this assignment. Do NOT create, modify or delete any file unless the assignment above explicitly tells you to write that file. Finish with a concise report as your final message.)';
 const RETRY_STEPS = 24; // ilk deneme adım sınırına çarparsa ikinci denemenin bütçesi
 
 // Boş/yarım kalan sonuç başarı sayılmaz
@@ -23,8 +24,7 @@ function readyItems(list) {
 }
 
 function depContext(item, reports) {
-  const parts = (item.depends_on || []).filter((d) => reports.has(d)).map((d) => `### Result of [${d}]\n${trunc(reports.get(d), MAX_DEP_CONTEXT)}`);
-  return parts.length ? `\n\n---\nResults from earlier steps you depend on:\n${parts.join('\n\n')}` : '';
+  return P.dependencyContext((item.depends_on || []).filter((d) => reports.has(d)).map((d) => ({ id: d, report: reports.get(d) })), { limit: LIMITS.dependencyContext });
 }
 
 // Kullanıcının son isteği dosya değiştirmemeyi söylüyor mu? (alt ajanlar bu kısıtı görmez, araçlardan zorlarız)
@@ -35,7 +35,7 @@ function readOnlyRequested(session) {
     const m = msgs[i];
     if (m.role !== 'user') continue;
     const text = typeof m.content === 'string' ? m.content : (m.content || []).map((p) => p.text || '').join(' ');
-    if (text.startsWith('[system reminder]')) continue;
+    if (text.startsWith(P.REMINDER_TAG)) continue;
     return NO_WRITE.test(text);
   }
   return false;
@@ -46,7 +46,7 @@ async function runPlan(session, call, signal) {
   const { spawn } = require('./subagents'); // döngüsel bağımlılığı önlemek için geç yükleme
   const list = session.todos || [];
   if (!list.some((x) => x.agent)) {
-    return { ok: false, output: 'No todo item has an "agent". Use todo_write with agent (+ prompt, depends_on) on the items subagents should do, then call run_plan.' };
+    return P.failure('NO_AGENT_ITEM', 'no todo item has an agent', 'Add agent and prompt, then call run_plan.');
   }
   let argsIn = {};
   try { argsIn = JSON.parse(call.arguments || '{}'); } catch { /* boş kabul */ }
@@ -64,7 +64,7 @@ async function runPlan(session, call, signal) {
     session.out.toolResult(true, '', { summary: `wave ${waves}: ${ready.length} agent${ready.length > 1 ? 's' : ''}`, body: renderTodos(list, true) });
 
     await Promise.all(ready.map(async (item) => {
-      const args = { agent: item.agent, description: head(item.content, 70), prompt: `${item.prompt || item.content}${depContext(item, reports)}${RULES}` };
+      const args = { agent: item.agent, description: head(item.content, 70), prompt: [item.prompt || item.content, depContext(item, reports), P.orchestraRules()].filter(Boolean).join('\n\n') };
       if (item.model) args.model = item.model;
       if (readOnly) args.read_only = true;
       let r;
@@ -75,7 +75,7 @@ async function runPlan(session, call, signal) {
         if (isBad(r) && !(signal && signal.aborted)) { // geçici hata / adım sınırı: bir kez daha, daha geniş bütçeyle
           const why = r.stopped ? 'ran out of steps' : r.ok ? 'returned no report' : 'failed';
           if (session.out.warn) session.out.warn(`[${item.agent}: ${head(item.content, 40)}] ${why}; retrying once`);
-          const retry = { ...args, max_steps: RETRY_STEPS, prompt: `${args.prompt}\n\n(Your previous attempt ${why}. Be efficient: read only what you need, then finish with your final report.)` };
+          const retry = { ...args, max_steps: RETRY_STEPS, prompt: `${args.prompt}\n\n${P.retryNotice({ why })}` };
           r = await spawn(session, { arguments: JSON.stringify(retry) }, signal);
           // routing.escalate: ucuz rol modeli iki kez üst üste başarısızsa ana/edit modeliyle bir kez daha (görev başına en çok 1)
           const R = require('./routing');

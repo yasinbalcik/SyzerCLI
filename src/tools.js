@@ -12,8 +12,10 @@ const perms = require('./permissions');
 const hooks = require('./hooks');
 const settingsMod = require('./settings');
 const gitMod = require('./git');
+const P = require('./prompts');
+const { LIMITS } = require('./limits');
 
-const MAX_OUT = 20000;
+const MAX_OUT = LIMITS.toolOutput;
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.venv']);
 
 const clip = (s) => (s.length > MAX_OUT ? s.slice(0, MAX_OUT) + `\n…(truncated ${s.length - MAX_OUT} chars)` : s);
@@ -24,32 +26,32 @@ const fn = (name, description, properties, required = []) => ({
 });
 
 const DEFS = [
-  fn('read_file', 'Read a text file. Returns numbered lines.', {
+  fn('read_file', P.toolDescription('read_file'), {
     path: { type: 'string' }, offset: { type: 'integer', description: '1-based start line' }, limit: { type: 'integer', description: 'max lines' },
   }, ['path']),
-  fn('write_file', 'Create or overwrite a file with the given content.', {
+  fn('write_file', P.toolDescription('write_file'), {
     path: { type: 'string' }, content: { type: 'string' },
   }, ['path', 'content']),
-  fn('edit_file', 'Replace exact strings in a file. Either pass old_string/new_string, or pass "edits" (an array of {old_string,new_string}) to apply several changes at once. Each old_string must match exactly once unless replace_all is true.', {
+  fn('edit_file', P.toolDescription('edit_file'), {
     path: { type: 'string' }, old_string: { type: 'string' }, new_string: { type: 'string' }, replace_all: { type: 'boolean' },
     edits: { type: 'array', items: { type: 'object', properties: { old_string: { type: 'string' }, new_string: { type: 'string' } }, required: ['old_string', 'new_string'] } },
   }, ['path']),
-  fn('list_dir', 'List files and folders in a directory.', { path: { type: 'string', description: 'default: .' } }),
-  fn('find_files', 'Find files by glob pattern (supports * ** ?), e.g. "src/**/*.js".', { pattern: { type: 'string' } }, ['pattern']),
-  fn('search_files', 'Search file contents with a regular expression. Returns file:line: text.', {
+  fn('list_dir', P.toolDescription('list_dir'), { path: { type: 'string', description: 'default: .' } }),
+  fn('find_files', P.toolDescription('find_files'), { pattern: { type: 'string' } }, ['pattern']),
+  fn('search_files', P.toolDescription('search_files'), {
     pattern: { type: 'string' }, path: { type: 'string', description: 'directory, default .' }, glob: { type: 'string', description: 'optional file filter, e.g. *.js' },
   }, ['pattern']),
-  fn('run_command', 'Run a shell command in the working directory and wait for its output.', {
+  fn('run_command', P.toolDescription('run_command'), {
     command: { type: 'string' }, timeout_seconds: { type: 'integer', description: 'default 60' },
   }, ['command']),
-  fn('run_background', 'Start a long-running command (dev server, watcher, long test run) in the background. Returns a task id.', { command: { type: 'string' } }, ['command']),
-  fn('bg_output', 'Read new output of a background task and see whether it is still running.', { id: { type: 'integer' } }, ['id']),
-  fn('bg_stop', 'Stop a background task.', { id: { type: 'integer' } }, ['id']),
-  fn('web_fetch', 'Fetch a web page or text URL and return its readable text.', {
+  fn('run_background', P.toolDescription('run_background'), { command: { type: 'string' } }, ['command']),
+  fn('bg_output', P.toolDescription('bg_output'), { id: { type: 'integer' } }, ['id']),
+  fn('bg_stop', P.toolDescription('bg_stop'), { id: { type: 'integer' } }, ['id']),
+  fn('web_fetch', P.toolDescription('web_fetch'), {
     url: { type: 'string' }, max_chars: { type: 'integer', description: 'default 12000' },
   }, ['url']),
-  fn('web_search', 'Search the web. Returns titles, URLs and snippets.', { query: { type: 'string' } }, ['query']),
-  fn('todo_write', 'Track a visible checklist ONLY for work with 3+ genuinely distinct steps, or when the user asks for a list. Do not use for single-step tasks, questions or chat. Send the FULL list each time; exactly one item in_progress until all are completed (then the list clears). Mark items completed immediately after finishing them. ORCHESTRA: give an item `agent` (+ `prompt`, optional `model`, `depends_on` ids) to assign it to a subagent; then call run_plan to execute all ready agent items in parallel waves. Items without `agent` are yours.', {
+  fn('web_search', P.toolDescription('web_search'), { query: { type: 'string' } }, ['query']),
+  fn('todo_write', P.toolDescription('todo_write'), {
     todos: {
       type: 'array',
       items: {
@@ -67,13 +69,12 @@ const DEFS = [
       },
     },
   }, ['todos']),
-  fn('use_skill', 'Load the full instructions of a named skill.', { name: { type: 'string' } }, ['name']),
+  fn('use_skill', P.toolDescription('use_skill'), { name: { type: 'string' } }, ['name']),
 ];
 
 const SPAWN_DEF = fn(
   'spawn_agent',
-  'Delegate a self-contained subtask to a subagent that starts with a fresh context. ' +
-    'Call it several times in one response to run subagents in parallel. Returns the subagent\'s final report.',
+  P.toolDescription('spawn_agent'),
   {
     agent: { type: 'string', description: 'agent name (default: general)' },
     description: { type: 'string', description: 'short 3-6 word label' },
@@ -84,9 +85,7 @@ const SPAWN_DEF = fn(
 
 const WORKER_DEF = fn(
   'spawn_syzer',
-  'Start an independent Syzer worker in its OWN visible Orca terminal tab (a full separate Syzer process with its own context). ' +
-    'Use for larger parallel jobs the user should be able to watch. Call it several times in one response to run workers in parallel. ' +
-    "Returns the worker's final report when it finishes.",
+  P.toolDescription('spawn_syzer'),
   {
     title: { type: 'string', description: 'short 2-5 word tab title' },
     prompt: { type: 'string', description: 'complete task instructions; the worker sees nothing else' },
@@ -97,7 +96,7 @@ const WORKER_DEF = fn(
 
 const RUN_PLAN_DEF = fn(
   'run_plan',
-  'Execute the orchestra plan in your todo list: runs every pending item that has an `agent` and whose depends_on items are completed, in parallel waves, passing dependency reports to dependents. Marks items completed automatically and returns each report. Items without `agent` are left for you; verify the reports and merge them yourself.',
+  P.toolDescription('run_plan'),
   { read_only: { type: 'boolean', description: 'true: subagents get read-only tools (set it whenever the user said not to modify files; it is also auto-detected from their request)' } },
   [],
 );
@@ -265,7 +264,7 @@ function trimmedMatches(src, needle) {
 }
 
 function applyEdit(src, oldStr, newStr, all) {
-  if (!oldStr) return { err: 'old_string is empty.' };
+  if (!oldStr) return { err: { code: 'TOOL_FAILED', detail: 'old_string is empty', hint: 'Provide the exact text to replace.' } };
   let ms = exactMatches(src, oldStr);
   let neu = newStr;
   if (!ms.length && src.includes('\r\n') && !oldStr.includes('\r\n')) {
@@ -274,8 +273,8 @@ function applyEdit(src, oldStr, newStr, all) {
   }
   let fuzzy = false;
   if (!ms.length) { ms = trimmedMatches(src, oldStr); fuzzy = ms.length > 0; }
-  if (!ms.length) return { err: 'old_string not found. Re-read the file and copy the exact text.' };
-  if (ms.length > 1 && !all) return { err: `old_string matches ${ms.length} times; add more context or set replace_all.` };
+  if (!ms.length) return { err: { code: 'EDIT_NOT_FOUND', detail: 'old_string was not found', hint: 'Re-read the file and copy the exact current text.' } };
+  if (ms.length > 1 && !all) return { err: { code: 'EDIT_AMBIGUOUS', detail: `old_string matches ${ms.length} times`, hint: 'Add context or set replace_all=true.' } };
   const use = all ? ms : [ms[0]];
   let out = src;
   for (const m of [...use].reverse()) out = out.slice(0, m.start) + neu + out.slice(m.end);
@@ -299,7 +298,7 @@ function prepareChange(name, a, abs) {
   let fuzzy = false;
   for (const [i, e] of edits.entries()) {
     const r = applyEdit(cur, e.old_string, e.new_string ?? '', e.replace_all || a.replace_all);
-    if (r.err) return { err: edits.length > 1 ? `edit #${i + 1}: ${r.err}` : r.err };
+    if (r.err) return { err: edits.length > 1 ? { ...r.err, detail: `edit #${i + 1}: ${r.err.detail}` } : r.err };
     cur = r.content; n += r.n; fuzzy = fuzzy || r.fuzzy;
   }
   return { p, before: src, after: cur, existed: true, n, fuzzy };
@@ -412,21 +411,21 @@ const rootOf = (s) => s; // alt ajan oturumları paylaşılan alanları getter i
 async function execute(call, session) {
   let a;
   try { a = JSON.parse(call.arguments || '{}'); }
-  catch { return { ok: false, output: 'Invalid JSON arguments.' }; }
+  catch { return P.failure('INVALID_JSON', 'tool arguments are not valid JSON', 'Retry with an object.'); }
 
   const name = call.name;
   const cwd = session.cwd;
   const isMcp = name.startsWith('mcp__');
-  if (session.allowedTools && !isMcp && !session.allowedTools.has(name)) return { ok: false, output: `Tool not available to this agent: ${name}` };
+  if (session.allowedTools && !isMcp && !session.allowedTools.has(name)) return P.failure('TOOL_FAILED', `tool not available to this agent: ${name}`);
 
   // 1) kurallar ve tehlikeli komut engeli
   const { verdict, rule } = perms.decide(session.settings, name, a, cwd);
-  if (verdict === 'deny') return { ok: false, output: t('blocked_rule', rule) };
-  if ((name === 'run_command' || name === 'run_background') && perms.dangerous(a.command)) return { ok: false, output: t('blocked_danger') };
+  if (verdict === 'deny') return P.failure('TOOL_FAILED', t('blocked_rule', rule));
+  if ((name === 'run_command' || name === 'run_background') && perms.dangerous(a.command)) return P.failure('TOOL_FAILED', t('blocked_danger'));
 
   // 2) PreToolUse hook'ları
   const pre = await hooks.pre(session.settings, name, a, cwd);
-  if (pre.block) return { ok: false, output: t('hook_blocked', pre.message) };
+  if (pre.block) return P.failure('TOOL_FAILED', t('hook_blocked', pre.message));
 
   const result = await runTool(name, a, call, session, verdict === 'allow');
 
@@ -439,7 +438,7 @@ async function execute(call, session) {
       result.ui.body = `${result.ui.body ? result.ui.body + '\n' : ''}${C.gray('    ' + note.split('\n')[0].slice(0, 120))}`;
     }
   }
-  return result;
+  return P.formatToolResult(result);
 }
 
 async function runTool(name, a, call, session, allowedByRule) {
@@ -451,11 +450,11 @@ async function runTool(name, a, call, session, allowedByRule) {
     let change = null;
     let ops = null;
     if (MUTATING.has(name) || isMcp) {
-      if (session.plan) return { ok: false, output: t('plan_block') };
-      if (session.perm === 'readonly') return { ok: false, output: t('readonly_block') };
+      if (session.plan) return P.failure('TOOL_FAILED', t('plan_block'));
+      if (session.perm === 'readonly') return P.failure('TOOL_FAILED', t('readonly_block'));
       if (FILE_WRITE.has(name)) {
         change = prepareChange(name, a, abs);
-        if (change.err) return { ok: false, output: change.err };
+        if (change.err) return P.failure(change.err.code, change.err.detail, change.err.hint);
         ops = diffLines(change.before, change.after);
       }
       const outside = FILE_WRITE.has(name) && perms.isOutside(cwd, a.path);
@@ -474,7 +473,7 @@ async function runTool(name, a, call, session, allowedByRule) {
           settingsMod.writeRule(cwd, 'allow', r);
           session.settings.allow.push(r);
           session.out.notice && session.out.notice(t('rule_added', 'allow', r));
-        } else if (verdict !== 'yes') return { ok: false, output: t('denied') };
+        } else if (verdict !== 'yes') return P.failure('TOOL_FAILED', t('denied'));
       }
       // git checkpoint: turdaki ilk değişiklikten önce
       if (!isMcp && !session.cpDone) {
@@ -487,9 +486,9 @@ async function runTool(name, a, call, session, allowedByRule) {
     }
 
     if (isMcp) {
-      if (!session.mcp) return { ok: false, output: 'MCP is not available.' };
+      if (!session.mcp) return P.failure('TOOL_FAILED', 'MCP is not available');
       const r = await session.mcp.call(name, a);
-      return { ok: r.ok, output: clip(r.text), ui: { summary: r.text.split('\n')[0].slice(0, 80) || 'ok' } };
+      return { ok: r.ok, output: r.ok ? clip(r.text) : `${P.error('TOOL_FAILED', 'MCP tool reported an error')}\n${clip(r.text)}`, ui: { summary: r.text.split('\n')[0].slice(0, 80) || 'ok' } };
     }
 
     switch (name) {
@@ -547,7 +546,7 @@ async function runTool(name, a, call, session, allowedByRule) {
         const lines = out.trim().split('\n').filter((l, i, all) => l.trim() || (i > 0 && i < all.length - 1));
         const shown = lines.slice(0, 8).map((l) => C.gray('    ' + l.slice(0, 160)));
         if (lines.length > 8) shown.push(C.gray('    ' + t('sum_lines', lines.length - 8)));
-        return { ok: code === 0, output: clip(`${out.trim()}\n[exit ${code}]`), ui: { summary: `exit ${code}`, body: shown.join('\n') } };
+        return { ok: code === 0, output: code === 0 ? clip(`${out.trim()}\n[exit ${code}]`) : `${P.error('TOOL_FAILED', `command exited with code ${code}`)}\n${clip(`${out.trim()}\n[exit ${code}]`)}`, ui: { summary: `exit ${code}`, body: shown.join('\n') } };
       }
       case 'run_background': {
         const e = startBackground(session, a.command);
@@ -555,7 +554,7 @@ async function runTool(name, a, call, session, allowedByRule) {
       }
       case 'bg_output': {
         const e = session.bg.get(a.id);
-        if (!e) return { ok: false, output: `No such task: ${a.id}` };
+        if (!e) return P.failure('TOOL_FAILED', `no such task: ${a.id}`);
         const fresh = e.out.slice(e.read);
         e.read = e.out.length;
         const status = e.done ? `exited ${e.code}` : 'running';
@@ -563,7 +562,7 @@ async function runTool(name, a, call, session, allowedByRule) {
       }
       case 'bg_stop': {
         const e = session.bg.get(a.id);
-        if (!e) return { ok: false, output: `No such task: ${a.id}` };
+        if (!e) return P.failure('TOOL_FAILED', `no such task: ${a.id}`);
         if (!e.done) killTree(e.child);
         return { ok: true, output: `Stopped #${a.id}`, ui: { summary: `#${a.id}` } };
       }
@@ -577,7 +576,7 @@ async function runTool(name, a, call, session, allowedByRule) {
       }
       case 'todo_write': {
         const v = validateTodos(a.todos, session.planDone || new Set());
-        if (v.error) return { ok: false, output: v.error, ui: { summary: v.error } };
+        if (v.error) return P.failure('TOOL_FAILED', v.error);
         const list = v.list;
         const done = list.filter((x) => x.status === 'completed').length;
         const cur = list.find((x) => x.status === 'in_progress');
@@ -596,14 +595,14 @@ async function runTool(name, a, call, session, allowedByRule) {
       }
       case 'use_skill': {
         const s = (session.skills || []).find((x) => x.name === a.name);
-        if (!s) return { ok: false, output: `Unknown skill: ${a.name}` };
+        if (!s) return P.failure('TOOL_FAILED', `unknown skill: ${a.name}`);
         return { ok: true, output: clip(`Skill file: ${s.file}\n\n${loadBody(s.file)}`), ui: { summary: s.name } };
       }
       default:
-        return { ok: false, output: `Unknown tool: ${name}` };
+        return P.failure('TOOL_FAILED', `unknown tool: ${name}`);
     }
   } catch (e) {
-    return { ok: false, output: e.message };
+    return P.failure('TOOL_FAILED', e.message);
   }
 }
 

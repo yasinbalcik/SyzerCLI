@@ -1,10 +1,11 @@
 'use strict';
 
-const { subSystem } = require('./context');
+const P = require('./prompts');
+const { LIMITS } = require('./limits');
 const { t } = require('./i18n');
 const { trunc, head } = require('./ui');
 
-const MAX_REPORT = 8000;
+const MAX_REPORT = LIMITS.subagentReport;
 const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'find_files', 'search_files', 'use_skill', 'web_fetch', 'web_search']);
 let counter = 0;
 
@@ -34,7 +35,7 @@ function makeSub(parent, agent, label, id, run, modelOverride, routedModel) {
     maxSteps: 12,
     spread: null,
     allowedTools: new Set(agent.tools),
-    messages: [{ role: 'system', content: `${subSystem(parent.ctx, agent)}\n\nWrite your final report in ${require('./i18n').LANGS[cfg.lang] || 'the same language as the task'}.` }],
+    messages: [{ role: 'system', content: P.subagentSystem({ ctx: parent.ctx, agent, language: cfg.lang }) }],
     todos: [],
     get perm() { return parent.perm; },
     set perm(v) { parent.perm = v; },
@@ -68,12 +69,12 @@ function makeSub(parent, agent, label, id, run, modelOverride, routedModel) {
 async function spawn(parent, call, signal) {
   const { runTurn } = require('./agent'); // döngüsel bağımlılığı önlemek için geç yükleme
   let a;
-  try { a = JSON.parse(call.arguments || '{}'); } catch { return { ok: false, output: 'Invalid JSON arguments.' }; }
-  if (!a.prompt) return { ok: false, output: 'prompt is required.' };
+  try { a = JSON.parse(call.arguments || '{}'); } catch { return P.failure('INVALID_JSON', 'tool arguments are not valid JSON', 'Retry with an object.'); }
+  if (!a.prompt) return P.failure('MISSING_PROMPT', 'prompt is required', 'Provide a complete task.');
 
   const agents = parent.ctx.agents;
   const agent = agents.find((x) => x.name === (a.agent || 'general'));
-  if (!agent) return { ok: false, output: `Unknown agent "${a.agent}". Available: ${agents.map((x) => x.name).join(', ')}` };
+  if (!agent) return P.failure('UNKNOWN_AGENT', `agent "${a.agent}" is not available`, `Choose one of: ${agents.map((x) => x.name).join(', ')}.`);
 
   const id = ++counter;
   const label = `${agent.name}: ${a.description || head(a.prompt, 70)}`;
@@ -115,7 +116,7 @@ async function spawn(parent, call, signal) {
   } catch (err) {
     if (err.name === 'AbortError') { run.aborted = true; throw err; }
     run.report = `failed: ${err.message}`;
-    return { ok: false, output: `Subagent failed: ${err.message}`, model: run.model || null, routedRole, ui: { summary: `${agent.name}: ${err.message}` } };
+    return { ...P.failure('TOOL_FAILED', `subagent failed: ${err.message}`, undefined, { model: run.model || null, routedRole }), ui: { summary: `${agent.name}: ${err.message}` } };
   } finally {
     run.secs = ((Date.now() - t0) / 1000).toFixed(1);
     hooks.subagentStop({ id: `syz-${process.pid}-${id}` });

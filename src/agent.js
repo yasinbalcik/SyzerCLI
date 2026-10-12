@@ -6,7 +6,8 @@ const { toolDefsFor, execute, describe } = require('./tools');
 const { spawn } = require('./subagents');
 const { fallbackChain, supportsReasoning } = require('./models');
 const stats = require('./stats');
-const { t } = require('./i18n');
+const { t, getLang } = require('./i18n');
+const P = require('./prompts');
 const hooks = require('./orca-hooks');
 
 const MAX_STEPS = 30;
@@ -162,7 +163,7 @@ async function runTurn(session, userContent, signal) {
         const open = top && !nagged && (session.todos || []).filter((x) => x.status !== 'completed');
         if (open && open.length && step < maxSteps - 1) {
           nagged = true;
-          session.messages.push({ role: 'user', content: `[system reminder] Your todo list still has unfinished items: ${open.map((x) => `"${x.content}" (${x.status})`).join(', ')}. Finish them (call run_plan for agent items), or update the list with todo_write (mark done/remove) before ending your turn. Do not mention this reminder to the user.` });
+          session.messages.push({ role: 'user', content: P.todoReminder(open, { language: getLang() }) });
           continue;
         }
         break;
@@ -226,8 +227,8 @@ async function runTurn(session, userContent, signal) {
     budgetExceeded = B.stopMessage(budgetStop);
     if (top) {
       out.warn(`BUDGET EXCEEDED: ${budgetExceeded}`);
-      session.messages.push({ role: 'assistant', content: `[budget exceeded: ${budgetStop}. Stopped after the last tool batch; the user may continue.]` });
-    } else finalText = `${finalText || ''}\n[budget exceeded: ${budgetStop}; stopped early]`.trim();
+      session.messages.push({ role: 'assistant', content: P.budgetNotice({ kind: 'assistant', reason: budgetStop }) });
+    } else finalText = `${finalText || ''}\n${P.budgetNotice({ kind: 'subagent', reason: budgetStop })}`.trim();
   }
   totals.ms = Date.now() - t0;
   if (top) hooks.turnDone(finalText);

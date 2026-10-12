@@ -3,6 +3,8 @@
 // Görev başına bütçe koruması: token / araç turu / dakika. Hepsi isteğe bağlı (null = kapalı).
 // Saf modül: saat enjekte edilebilir; ayar/ortam çözümü ve doğrulama burada.
 
+const P = require('./prompts');
+
 const DIMS = ['tokens', 'turns', 'minutes'];
 const ENV = { tokens: 'SYZER_BUDGET_TOKENS', turns: 'SYZER_BUDGET_TURNS', minutes: 'SYZER_BUDGET_MINUTES' };
 const WARN_AT = 0.8;
@@ -102,6 +104,6 @@ function stopReason(tr, warn) {
   c.warn.forEach((w) => warn(warnText(w)));
   return c.exceeded ? exceededText(tr) : null;
 }
-const stopMessage = (reason) => `${reason}. Reply to continue (counters reset on your next prompt) or raise the limit with /budget.`;
+const stopMessage = (reason) => P.budgetNotice({ kind: 'stop', reason });
 
 module.exports = { onResponse, stopReason, stopMessage, DIMS, ENV, WARN_AT, parseLimit, normalize, resolve, createTracker, warnText, exceededText, estimateTokens, fmt };

@@ -8,6 +8,8 @@
 const fs = require('fs');
 const path = require('path');
 const { allModels } = require('./models');
+const P = require('./prompts');
+const { LIMITS } = require('./limits');
 
 const textOf = (m) => {
   let s = typeof m.content === 'string' ? m.content : (m.content || []).map((p) => (p.type === 'text' ? p.text : '[image]')).join(' ');
@@ -85,7 +87,7 @@ function trimToolResults(messages, opts = {}) {
 }
 
 // ---------- aşama 2: özet ----------
-const SUMMARY_TAG = '[Conversation summary]';
+const SUMMARY_TAG = P.SUMMARY_TAG;
 const SUMMARY_MAX_CHARS = 3200; // ≈ 800 token
 
 // Kesim noktası: kullanıcı mesajı indeksi; en eski ~yarıyı (token olarak) özetler.
@@ -113,14 +115,11 @@ function pickCut(messages, est = estimate) {
 const roleLabel = { user: 'USER', assistant: 'ASSISTANT', tool: 'TOOL', system: 'SYSTEM' };
 function transcriptOf(msgs) {
   const t = msgs.map((m) => `${roleLabel[m.role] || String(m.role).toUpperCase()}: ${textOf(m).slice(0, 2500)}`).join('\n\n');
-  return t.length > 60000 ? `…\n${t.slice(-60000)}` : t;
+  return t.length > LIMITS.transcript ? `…\n${t.slice(-LIMITS.transcript)}` : t;
 }
 
-const SUMMARY_SYSTEM = 'You compress conversations into faithful working summaries.';
-const summaryPrompt = (transcript, hint) =>
-  'Summarize this conversation so work can continue without it. Cover: the user\'s goals, decisions made, files touched (with paths), ' +
-  'open TODOs / next steps, and commands run with results that matter. Dense and factual, no preamble, at most ~600 words.' +
-  `${hint ? `\nExtra focus: ${hint}` : ''}\n\n${transcript}`;
+const SUMMARY_SYSTEM = P.summarySystem();
+const summaryPrompt = (transcript, hint) => P.summaryPrompt({ transcript, hint });
 
 // summarize(transcript, hint) → string (başarısızlıkta throw ya da boş). Başarısızsa null (geçmiş değişmez).
 async function summarizePass(messages, { summarize, est = estimate, hint = '', persist = null } = {}) {
@@ -137,7 +136,7 @@ async function summarizePass(messages, { summarize, est = estimate, hint = '', p
     messages: [
       ...messages.slice(0, start),
       { role: 'user', content: `${SUMMARY_TAG}\n${summary}` },
-      { role: 'assistant', content: 'Understood. I will continue from this summary.' },
+      { role: 'assistant', content: P.summaryAck() },
       ...messages.slice(cut),
     ],
     summarized: cut - start,

@@ -4,9 +4,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const config = require('./config');
-const { LANGS, getLang } = require('./i18n');
+const { getLang } = require('./i18n');
+const P = require('./prompts');
+const { LIMITS } = require('./limits');
 
-const MAX_FILE = 12000;
+const MAX_FILE = LIMITS.instructionFile;
 const readSafe = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } };
 const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
 
@@ -132,19 +134,17 @@ const BUILTIN_AGENTS = [
   {
     name: 'explore', builtin: true, model: null, tools: READ_TOOLS,
     description: 'Fast read-only exploration of the codebase or a topic. Returns findings with file paths and line numbers.',
-    prompt: 'You are an exploration agent. You can only read: list, find, search and read files. Never modify anything. ' +
-      'Investigate thoroughly but efficiently, then report concrete findings (file paths, line numbers, short quotes).',
+    prompt: P.role({ name: 'explore' }),
   },
   {
     name: 'plan', builtin: true, model: null, tools: READ_TOOLS,
     description: 'Read-only planner. Studies the code and returns a step-by-step implementation plan.',
-    prompt: 'You are a planning agent. You can only read. Study the relevant code, then return a concise numbered ' +
-      'implementation plan listing the exact files to change and the risks. Do not modify anything.',
+    prompt: P.role({ name: 'plan' }),
   },
   {
     name: 'general', builtin: true, model: null, tools: ALL_TOOLS,
     description: 'General-purpose worker that can read and edit files and run commands to complete a self-contained task.',
-    prompt: 'You are a worker agent. Complete the assigned task fully using your tools, then report what you did.',
+    prompt: P.role({ name: 'general' }),
   },
 ];
 
@@ -185,14 +185,8 @@ function findAgents(cwd) {
 }
 
 // Alt ajanın sistem istemi
-function subSystem(ctx, agent) {
-  return [
-    ctx.header,
-    agent.prompt,
-    'You are a subagent working for a lead agent. You cannot ask the user questions. ' +
-      'Finish the task, then reply with a concise final report (findings, file paths, results). The lead only sees that report.',
-    ...ctx.files.map((f) => `--- ${f.path} ---\n${f.text}`),
-  ].filter(Boolean).join('\n\n');
+function subSystem(ctx, agent, language = getLang()) {
+  return P.subagentSystem({ ctx, agent, language });
 }
 
 // --- Sistem istemi ---
@@ -203,41 +197,8 @@ function buildContext(cwd) {
   const commands = findCommands(cwd);
   const agents = findAgents(cwd);
 
-  const parts = [
-    `You are SyzerCLI, a capable coding and general-purpose agent running in the user's terminal.`,
-    `Working directory: ${cwd}`,
-    `Platform: ${process.platform}. Shell for run_command: ${process.platform === 'win32' ? 'PowerShell' : 'sh'}.`,
-    `Reply in ${LANGS[getLang()] || 'English'} unless the user writes in another language.`,
-    `Use tools to inspect and change files instead of guessing. Read a file before editing it. ` +
-      `Prefer edit_file for small changes (several at once via its edits array) and write_file for new files. Keep answers concise. ` +
-      `Use todo_write only for substantial work with 3+ genuinely distinct steps (or when asked); never for single-step tasks, questions or chat. ` +
-      `Keep exactly one item in_progress, mark items completed right after finishing them, and do not end your turn with unfinished items. ` +
-      `Use web_search/web_fetch when you need current information. Use run_background for servers or long-running commands.`,
-  ];
-  const header = parts.join('\n');
-
-  if (skills.length) {
-    parts.push(
-      'Available skills (call the use_skill tool with the exact name to load full instructions when relevant):\n' +
-        skills.slice(0, 40).map((s) => `- ${s.name}: ${s.description.slice(0, 140)}`).join('\n'),
-    );
-  }
-  parts.push(
-    'Subagents: for independent or exploratory subtasks, delegate with the spawn_agent tool. Each subagent starts with a ' +
-      'fresh context and only sees the prompt you give it, so make the prompt self-contained. Call spawn_agent several ' +
-      'times in ONE response to run subagents in parallel. Do trivial work yourself. ' +
-      'ORCHESTRA: for a big job you are the orchestrator. Write the plan with todo_write, giving each item an id, an agent, a self-contained prompt and depends_on ids ' +
-      '(independent items have none and run in parallel; later items get the reports of what they depend on). Optionally set a per-item model. ' +
-      'Subagents only see their own prompt: copy the user constraints (read-only, do not modify files, language, scope) into every agent prompt, and use read-only agents (explore, plan) for analysis items. ' +
-      'Plan FIRST: write the todo_write plan before reading files yourself, and never do an agent item yourself (it cannot be marked completed except by run_plan). ' +
-      'Then call run_plan; it runs the ready items in waves, retries a stalled agent once, and marks items completed. Afterwards verify the reports. ' +
-      'The final synthesis/report is YOURS: add it as a last item WITHOUT an agent (never delegate writing the final answer), and if one item needs the output of another, list it in depends_on. ' +
-      'Use this only when the work splits into 3+ separable pieces; otherwise just work directly. Available agents:\n' +
-      agents.map((a) => `- ${a.name}: ${a.description.slice(0, 140)}`).join('\n'),
-  );
-  for (const f of files) parts.push(`--- ${f.path} ---\n${f.text}`);
-
-  return { system: parts.join('\n\n'), header, files, skills, commands, agents };
+  const input = { cwd, platform: process.platform, language: getLang(), skills, instructionFiles: files, agents };
+  return { system: P.leadSystem(input), header: P.base(input), files, skills, commands, agents };
 }
 
 module.exports = { buildContext, loadBody, findSkills, findCommands, findAgents, subSystem, parseFrontmatter };
