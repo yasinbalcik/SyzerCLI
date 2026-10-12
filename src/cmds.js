@@ -3,6 +3,7 @@
 const config = require('./config');
 const providers = require('./providers');
 const { getJson, validateKey } = require('./api');
+const { mapLimit, retry429, retryResult, DEFAULT_CONCURRENCY } = require('./pool');
 const { t, setLang, LANGS } = require('./i18n');
 const { C, bar, pad, vlen } = require('./ui');
 const { mask, usable, addKeys, nextUtcMidnight } = require('./keys');
@@ -137,7 +138,8 @@ async function usageSummary(cfg, { json = false } = {}) {
 }
 
 async function usageOpenRouter(cfg, json) {
-  const infos = await Promise.all(cfg.keys.map(fetchInfo));
+  // 679 key'i aynı anda sorgulamak OpenRouter'ı 429'a düşürüyordu ("ulaşılamadı: Rate limit exceed"): sınırlı eşzamanlılık + geri çekilme
+  const infos = await mapLimit(cfg.keys, DEFAULT_CONCURRENCY, (e) => retryResult(() => fetchInfo(e)));
   infos.forEach((r, i) => {
     if (r.ok) sync(cfg.keys[i], r.data);
     else if (r.status === 401) { cfg.keys[i].disabled = true; cfg.keys[i].reason = '401'; }
@@ -187,9 +189,9 @@ async function usageOpenRouter(cfg, json) {
 // Kalan kota bilgisi vermeyen sağlayıcılar (NVIDIA): yerel istek sayacı + isteğe bağlı canlı doğrulama
 async function usageLocal(cfg, p, json, check) {
   const counts = stats.todayKeyCounts(p.id);
-  const live = check ? await Promise.all(cfg.keys.map(async (e) => {
-    try { await validateKey(p, e.key); return { ok: true }; } catch (err) { return { ok: false, why: `${err.status || ''} ${err.message}`.trim() }; }
-  })) : [];
+  const live = check ? await mapLimit(cfg.keys, DEFAULT_CONCURRENCY, async (e) => {
+    try { await retry429(() => validateKey(p, e.key)); return { ok: true }; } catch (err) { return { ok: false, why: `${err.status || ''} ${err.message}`.trim() }; }
+  }) : [];
   cfg.keys.forEach((e, i) => { if (live[i] && !live[i].ok && /^(401|403)/.test(live[i].why)) { e.disabled = true; e.reason = String(live[i].why).slice(0, 3); } });
   if (check) config.save(cfg);
 

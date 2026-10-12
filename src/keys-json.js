@@ -5,6 +5,7 @@ const config = require('./config');
 const providers = require('./providers');
 const { mask, usable, addKeys } = require('./keys');
 const { validateKey } = require('./api');
+const { mapLimit, retry429, DEFAULT_CONCURRENCY } = require('./pool');
 
 const stateOf = (e) => (e.disabled ? 'off' : e.blockedUntil > Date.now() ? 'wait' : 'ready');
 
@@ -51,22 +52,31 @@ const ids = (provider) => (provider ? [provider] : providers.list().map((p) => p
 
 // Canlı doğrulama: 401/403 => key kapatılır (disabled + reason); başarılıysa daha önce 401/403 ile kapatılmış key tekrar açılır.
 // Geçici hatalar (429/5xx/ağ) key'i değiştirmez. Çıktı: { providers: [{ id, keys: [{ index, state, reason }] }] }
-async function test(provider, validate = validateKey) {
+async function test(provider, validate = validateKey, opts = {}) {
   const out = [];
   for (const id of ids(provider)) {
     const st = config.loadKeys(id);
     const p = providers.PROVIDERS[id];
-    await Promise.all(st.keys.map(async (e) => {
+    // Sınırlı eşzamanlılık + 429'da geri çekilme: 679 key'i aynı anda göndermek sağlayıcıyı 429'a düşürüp testi anlamsız kılıyordu.
+    const unverified = new Set();
+    const check = async (e) => {
       try {
-        await validate(p, e.key);
+        await retry429(() => validate(p, e.key), opts.retry);
+        unverified.delete(e);
         if (e.disabled && /^(401|403)/.test(String(e.reason || ''))) { delete e.disabled; delete e.reason; }
       } catch (err) {
         const why = `${err.status || ''} ${err.message}`.trim();
-        if (/^(401|403)/.test(why)) { e.disabled = true; e.reason = why.slice(0, 3); }
+        if (/^(401|403)/.test(why)) { unverified.delete(e); e.disabled = true; e.reason = why.slice(0, 3); } else unverified.add(e); // 429 (geri çekilmeye rağmen)/5xx/ağ: doğrulanamadı
       }
-    }));
+    };
+    await mapLimit(st.keys, opts.concurrency || DEFAULT_CONCURRENCY, check);
+    // doğrulanamayanlar için ikinci tur: kısa bekleme + düşük eşzamanlılık (sağlayıcının sınır penceresi açılmış olur)
+    if (unverified.size) {
+      await (opts.pause || ((ms) => new Promise((r) => setTimeout(r, ms))))(3000);
+      await mapLimit([...unverified], 2, check);
+    }
     if (st.keys.length) config.saveKeys(id, st);
-    out.push({ id, keys: st.keys.map((e, i) => ({ index: i + 1, state: stateOf(e), reason: e.reason || null })) });
+    out.push({ id, unverified: unverified.size, keys: st.keys.map((e, i) => ({ index: i + 1, state: stateOf(e), reason: e.reason || null, verified: !unverified.has(e) })) });
   }
   return { providers: out };
 }

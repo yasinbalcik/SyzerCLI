@@ -5,15 +5,48 @@
 const config = require('./config');
 const providers = require('./providers');
 const { getJson } = require('./api');
+const { mapLimit, retry429, DEFAULT_CONCURRENCY } = require('./pool');
 const { usable, nextUtcMidnight } = require('./keys');
 const stats = require('./stats');
 
 const pct = (used, limit) => (limit > 0 ? Math.max(0, Math.min(100, Math.round((used / limit) * 100))) : null);
 
-async function openrouter(keys) {
-  const infos = await Promise.all(keys.map(async (e) => {
-    try { return (await getJson('/key', e.key)).data; } catch { return null; }
-  }));
+// Orca durum çubuğu bu çıktıyı sık sık ister; çok key'li havuzda her çağrıda hepsini sorgulamamak için kısa süreli önbellek.
+// OpenRouter /key uç noktası ~4-5 istek/sn'de sınırlanır: 679 key'lik havuzu tam taramak ~2.5 dk sürer. Bu yüzden anahtar başına
+// önbellek tutulur; her çağrı en eski kayıtları zaman bütçesi dahilinde yeniler, geri kalanı önbellekten okur (yüzde oranı
+// bir alt kümeden de doğru çıkar). Böylece durum çubuğu hızlı kalır, havuz birkaç çağrıda tamamen taranmış olur.
+const FRESH_MS = 120000;       // bu süreden yeni kayıt yeniden sorgulanmaz
+const MAX_AGE_MS = 24 * 3600e3; // bundan eski kayıt kullanılmaz
+const fp = (key) => require('crypto').createHash('sha1').update(String(key)).digest('hex').slice(0, 12);
+const cachePath = () => require('path').join(config.DIR, 'usage-key-cache.json');
+function readCache() {
+  try { const c = JSON.parse(require('fs').readFileSync(cachePath(), 'utf8')); return c && c.keys && typeof c.keys === 'object' ? c.keys : {}; } catch { return {}; }
+}
+function writeCache(map) {
+  try { require('fs').writeFileSync(cachePath(), JSON.stringify({ keys: map })); } catch { /* önemsiz */ }
+}
+
+// budgetMs: yeni sorgulara ayrılan süre (aşılınca kalan key'ler önbellekten okunur). Tam tarama için Infinity.
+async function openrouter(keys, { budgetMs = 10000, now = Date.now(), fetchKey = (k) => retry429(() => getJson('/key', k)) } = {}) {
+  const cache = readCache();
+  const deadline = now + budgetMs;
+  const live = new Set(Object.keys(cache));
+  const todo = keys
+    .map((e) => ({ e, id: fp(e.key), at: (cache[fp(e.key)] || {}).at || 0 }))
+    .filter((x) => now - x.at >= FRESH_MS)
+    .sort((a, b) => a.at - b.at); // hiç sorgulanmamış / en eski önce
+  await mapLimit(todo, DEFAULT_CONCURRENCY, async (x) => {
+    if (Date.now() > deadline) return;
+    try { cache[x.id] = { at: Date.now(), data: (await fetchKey(x.e.key)).data }; } catch { /* eski kayıt korunur */ }
+  });
+  const ids = new Set(keys.map((e) => fp(e.key)));
+  for (const id of live) if (!ids.has(id)) delete cache[id]; // silinmiş key'leri temizle
+  writeCache(cache);
+  const infos = keys.map((e) => { const c = cache[fp(e.key)]; return c && Date.now() - c.at < MAX_AGE_MS ? c.data : null; });
+  return summarize(infos);
+}
+
+function summarize(infos) {
   let used = 0, limit = 0, cUsed = 0, cLimit = 0, reachable = 0;
   for (const d of infos) {
     if (!d) continue;
