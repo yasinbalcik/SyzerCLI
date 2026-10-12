@@ -13,7 +13,7 @@
   },
   "license": "MIT",
   "scripts": {
-    "test": "node --test test/core.test.js test/todo.test.js test/click-report.test.js test/orchestra.test.js test/bridge.test.js test/agent-tree.test.js test/dock-tree.test.js test/api-stall.test.js test/logo3d.test.js test/splash.test.js test/logo-cmd.test.js test/keys-json.test.js test/key-health.test.js test/checkpoints.test.js test/budget.test.js test/headless.test.js",
+    "test": "node --test test/core.test.js test/todo.test.js test/click-report.test.js test/orchestra.test.js test/bridge.test.js test/agent-tree.test.js test/dock-tree.test.js test/api-stall.test.js test/logo3d.test.js test/splash.test.js test/logo-cmd.test.js test/keys-json.test.js test/key-health.test.js test/checkpoints.test.js test/budget.test.js test/headless.test.js test/compact.test.js",
     "pack": "node scripts/pack.js",
     "build:exe": "node scripts/build-exe.js"
   },

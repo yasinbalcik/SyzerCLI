@@ -74,4 +74,4 @@ function find(id) {
   try { return JSON.parse(fs.readFileSync(path.join(DIR, `${want}.json`), 'utf8')); } catch { return null; }
 }
 
-module.exports = { newId, save, list, find };
+module.exports = { newId, save, list, find, slim };

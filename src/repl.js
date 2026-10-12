@@ -352,12 +352,14 @@ async function start(cfg, opts = {}, io = {}) {
   dock.getTreeCount = () => s.out.getTreeCount();
 
   const doCompact = async (hint) => {
+    const trimOnly = /^trim$/i.test(hint.trim());
     console.log(C.gray(t('compact_start')));
     s.out.waiting(true, t('compact_start'));
     try {
-      const r = await compactMod.compact(s, hint);
+      const r = await compactMod.compactSession(s, { mode: trimOnly ? 'trim' : 'force', hint: trimOnly ? '' : hint });
       s.out.waiting(false);
-      console.log(r ? C.green(`✔ ${t('compact_done', r.before.toLocaleString(), r.after.toLocaleString())}`) : C.gray(t('compact_none')));
+      console.log(r ? C.green(`✔ ${compactMod.line(r)}`) : C.gray(t('compact_none')));
+      if (r) sessions.save(s);
     } catch (e) { s.out.waiting(false); console.error(`${C.red('✖')} ${e.message}`); }
   };
 
@@ -380,9 +382,7 @@ async function start(cfg, opts = {}, io = {}) {
       } catch { /* the report must never break a turn */ }
     };
     try {
-      // Bağlam %75'i aşarsa önce otomatik özetle
-      const win = await windowOf(s.model);
-      if (estimate(s.messages) > win * 0.75) await doCompact('');
+      const win = await windowOf(s.model); // otomatik sıkıştırma runTurn başında (agent.js, compact.js eşiği)
       const content = await buildContent((s.plan ? PLAN_PREFIX : '') + expandMentions(text, s.cwd), images, s.model, s.out);
       docked = await dock.begin();
       if (docked) s.out.setDock(dock);
@@ -570,10 +570,16 @@ async function start(cfg, opts = {}, io = {}) {
         console.log(C.gray(t('init_start')));
         await chat('Analyze this project using your tools (structure, package/config files, README, scripts, conventions). Then create SYZER.md in the project root: a concise guide for AI agents covering what the project is, how to build/test/run it, the code layout, and conventions to follow. Keep it under 60 lines.');
         return;
-      case 'context':
+      case 'context': {
+        const st = await compactMod.status(s);
+        const thr = Number.isFinite(st.threshold) ? st.threshold.toLocaleString() : 'off';
+        const pct = Number.isFinite(st.threshold) ? ` (${Math.round((st.tokens / st.threshold) * 100)}%)` : '';
+        console.log(`${C.bold('context')} ~${st.tokens.toLocaleString()} tokens / threshold ${thr}${pct}${st.win ? ` · window ${st.win.toLocaleString()}` : ''}`);
+        console.log(C.gray(`  ${st.messages} messages · ${st.toolResults} tool results (${st.trimmedResults} trimmed) · summary: ${st.hasSummary ? 'yes' : 'no'} · pre-compact snapshots: ${st.snapshots}`));
         if (!s.ctx.files.length) console.log(t('ctx_none'));
         s.ctx.files.forEach((f) => console.log(`  ${C.gray('•')} ${f.path} ${C.gray(`(${f.text.length})`)}`));
         return;
+      }
       default: {
         const command = s.ctx.commands.find((k) => k.name === cmd);
         const skill = s.ctx.skills.find((k) => k.name === cmd);

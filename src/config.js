@@ -19,6 +19,7 @@ const GLOBAL_DEFAULTS = {
   setupDone: false, // ilk kurulum sihirbazı tamamlandı mı
   autoUpdate: true, // açılışta GitHub'dan güncelleme kontrolü
   budget: { tokens: null, turns: null, minutes: null }, // görev başına bütçe koruması (null = kapalı)
+  compact: { threshold: null }, // otomatik bağlam sıkıştırma eşiği: token | "70%" | "off" (null = pencerenin %70'i, bilinmiyorsa 60k)
 };
 
 // Her sağlayıcı için ayrı tutulan ayarlar (model, effort, yedek modeller, subagent modeli)

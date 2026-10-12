@@ -96,11 +96,21 @@ async function callModel(session, signal, hooks) {
 
 async function runTurn(session, userContent, signal) {
   const { out } = session;
+  const top = !session.agentName; // Orca durum olayları yalnızca ana oturum için
+  const B = require('./budget');
+  if (top || !session.budget) { // ana tur bütçeyi sıfırlar; süreç içi alt ajanlar aynı sayaca yazar
+    session.budget = B.createTracker(B.resolve(session.cfg.budget, process.env, session.budgetFlags));
+  }
+  const bud = session.budget;
+  const compactMod = require('./compact');
+  const sayCompact = (l) => { try { process.stderr.write(`${l}\n`); } catch { /* önemsiz */ } };
+  if (top && !session.noAutoCompact) { // bağlam eşiği aşılmışsa tur başında sıkıştır (geçmiş yedeklenir, hata turu bozmaz)
+    try { await compactMod.compactSession(session, { mode: 'auto', say: sayCompact }); } catch { /* önemsiz */ }
+  }
   const startLen = session.messages.length;
   if (session.canSpawn !== false || !session.agentName) session.cpDone = false; // her tur için yeni git checkpoint hakkı
   session.messages.push({ role: 'user', content: userContent });
   if (!session.agentName) require('./checkpoints').store().beginTurn(session.sessionId, typeof userContent === 'string' ? userContent : (userContent.find((p) => p.type === 'text') || {}).text || '');
-  const top = !session.agentName; // Orca durum olayları yalnızca ana oturum için
   if (top) { hooks.setSession(session.sessionId); try { require('./sessions').save(session); } catch { /* önemsiz */ } } // oturum dosyası ilk olaydan önce diskte olsun
   if (top) hooks.promptSubmitted(typeof userContent === 'string' ? userContent : (userContent.find((p) => p.type === 'text') || {}).text || '');
 
@@ -109,15 +119,14 @@ async function runTurn(session, userContent, signal) {
   let finalText = '';
   let nagged = false;
   let budgetStop = null;
-  const B = require('./budget');
-  if (top || !session.budget) { // ana tur bütçeyi sıfırlar; süreç içi alt ajanlar aynı sayaca yazar
-    session.budget = B.createTracker(B.resolve(session.cfg.budget, process.env, session.budgetFlags));
-  }
-  const bud = session.budget;
 
   try {
     const maxSteps = session.maxSteps || MAX_STEPS;
     for (let step = 0; step < maxSteps; step++) {
+      if (step > 0 && top && !session.noAutoCompact && session.compactThreshold && compactMod.estimate(session.messages) > session.compactThreshold) {
+        // tur ortasında yalnızca ucuz kısaltma (mesaj sayısı/sırası değişmez → startLen geçerli kalır)
+        try { await compactMod.compactSession(session, { mode: 'trim', threshold: session.compactThreshold, say: sayCompact }); } catch { /* önemsiz */ }
+      }
       let waiting = true;
       out.waiting(true);
       const stopWaiting = () => { if (waiting) { waiting = false; out.waiting(false); } };
