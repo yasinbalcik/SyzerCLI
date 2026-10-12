@@ -25,6 +25,7 @@ const HELP = `SyzerCLI v${pkg.version}
   syzer provider [openrouter|nvidia]  switch provider (each has its own key file)
   syzer key add [keys|--file f]  add many keys at once; provider is detected from the key format
   syzer key list | use <n> | remove <n> | reset | test | prune  (test/prune print JSON; --provider p)
+  syzer key usage --json [--provider p] [--all | --budget-ms N]   refresh + list per-key quota (cached, bounded)
   syzer key stats [--json]    recent outcomes, failure rate and cool-down per key (smart rotation)
   syzer usage [--json] [--check]  per-key status (OpenRouter: free requests/credit; NVIDIA: local counts, --check verifies live)
   syzer models [text] [--check] [--all]  list models (NVIDIA: --check finds which work on your account)
@@ -81,6 +82,7 @@ function parseArgs(argv) {
     else if (a === '--provider') f.provider = argv[++i];
     else if (a === '-e' || a === '--effort') f.effort = argv[++i];
     else if (a === '-a' || a === '--agent') f.agent = argv[++i];
+    else if (a === '--budget-ms') f.budgetMs = argv[++i];
     else if (a === '--budget-tokens') f.budgetTokens = argv[++i];
     else if (a === '--budget-turns') f.budgetTurns = argv[++i];
     else if (a === '--budget-minutes') f.budgetMinutes = argv[++i];
@@ -226,6 +228,10 @@ async function main() {
     const kj = require('../src/keys-json');
     const r = kj.stats(f.provider);
     return console.log(f.json ? JSON.stringify(r) : kj.statsText(r));
+  }
+  if ((cmd === 'key' || cmd === 'keys') && sub === 'usage') { // kota önbelleğini yenile + listele (JSON; Orca key yöneticisi)
+    const kj = require('../src/keys-json');
+    return console.log(JSON.stringify(await kj.usage(f.provider, { all: !!f.all, budgetMs: parseInt(f.budgetMs, 10) || 0 })));
   }
   if ((cmd === 'key' || cmd === 'keys') && (f.json || sub === 'test' || sub === 'prune')) { // makine okunur çıktı (Orca vb.)
     const kj = require('../src/keys-json');

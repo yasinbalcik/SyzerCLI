@@ -27,18 +27,35 @@ function writeCache(map) {
 }
 
 // budgetMs: yeni sorgulara ayrılan süre (aşılınca kalan key'ler önbellekten okunur). Tam tarama için Infinity.
-async function openrouter(keys, { budgetMs = 10000, now = Date.now(), fetchKey = (k) => retry429(() => getJson('/key', k)) } = {}) {
-  const cache = readCache();
+const defaultFetchKey = (k) => retry429(() => getJson('/key', k));
+
+// Önbelleği zaman bütçesi dahilinde yeniler (en eski önce). Bellekteki cache nesnesini günceller; yazmaz.
+async function refreshInto(cache, keys, { budgetMs, now, fetchKey }) {
   const deadline = now + budgetMs;
-  const live = new Set(Object.keys(cache));
+  let refreshed = 0;
   const todo = keys
     .map((e) => ({ e, id: fp(e.key), at: (cache[fp(e.key)] || {}).at || 0 }))
     .filter((x) => now - x.at >= FRESH_MS)
     .sort((a, b) => a.at - b.at); // hiç sorgulanmamış / en eski önce
   await mapLimit(todo, DEFAULT_CONCURRENCY, async (x) => {
     if (Date.now() > deadline) return;
-    try { cache[x.id] = { at: Date.now(), data: (await fetchKey(x.e.key)).data }; } catch { /* eski kayıt korunur */ }
+    try { cache[x.id] = { at: Date.now(), data: (await fetchKey(x.e.key)).data }; refreshed++; } catch { /* eski kayıt korunur */ }
   });
+  return refreshed;
+}
+
+// Harici kullanım (Orca `key usage`): önbelleği yeniler ve yazar; budgetMs Infinity = tam tarama. Diğer sağlayıcıların kayıtlarına dokunmaz.
+async function refreshKeyUsage(keys, { budgetMs = 10000, now = Date.now(), fetchKey = defaultFetchKey } = {}) {
+  const cache = readCache();
+  const refreshed = await refreshInto(cache, keys, { budgetMs, now, fetchKey });
+  if (refreshed) writeCache(cache);
+  return { refreshed, total: keys.length };
+}
+
+async function openrouter(keys, { budgetMs = 10000, now = Date.now(), fetchKey = defaultFetchKey } = {}) {
+  const cache = readCache();
+  const live = new Set(Object.keys(cache));
+  await refreshInto(cache, keys, { budgetMs, now, fetchKey });
   const ids = new Set(keys.map((e) => fp(e.key)));
   for (const id of live) if (!ids.has(id)) delete cache[id]; // silinmiş key'leri temizle
   writeCache(cache);
@@ -86,4 +103,4 @@ async function summary(only) {
   return { providers: out, percent_used: overall, keys_ready: tot.ready, keys_total: tot.total, updated_at: new Date().toISOString() };
 }
 
-module.exports = { summary };
+module.exports = { summary, fingerprint: fp, readKeyCache: readCache, refreshKeyUsage, MAX_AGE_MS };

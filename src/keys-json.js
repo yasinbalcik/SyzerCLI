@@ -9,16 +9,54 @@ const { mapLimit, retry429, DEFAULT_CONCURRENCY } = require('./pool');
 
 const stateOf = (e) => (e.disabled ? 'off' : e.blockedUntil > Date.now() ? 'wait' : 'ready');
 
-function listAll() {
+const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+
+// Ağ yok: kota verisi usage-key-cache.json'dan (24 saatten eski kayıt yok sayılır). opts.readCache / opts.now test için enjekte edilebilir.
+function listAll(opts = {}) {
+  const us = require('./usage-summary');
+  const now = opts.now || Date.now();
+  const cache = (opts.readCache || us.readKeyCache)() || {};
   return {
-    providers: providers.list().map((p) => {
+    providers: providers.list().filter((p) => !opts.provider || p.id === opts.provider).map((p) => {
       const st = config.loadKeys(p.id);
-      return {
-        id: p.id, name: p.name, hint: p.keyHint,
-        keys: st.keys.map((e, i) => ({ index: i + 1, key: mask(e.key), state: stateOf(e), ready: usable(e), reason: e.reason || null, until: e.blockedUntil > Date.now() ? e.blockedUntil : null, active: i === (st.active | 0) })),
-      };
+      const tot = { keys_total: st.keys.length, ready: 0, keys_with_data: 0, free_remaining: 0, free_limit: 0, oldest_check_at: null, newest_check_at: null };
+      const keys = st.keys.map((e, i) => {
+        const ready = usable(e);
+        if (ready) tot.ready++;
+        let free = null, credit = null, checked = null;
+        const c = p.hasUsageApi ? cache[us.fingerprint(e.key)] : null;
+        if (c && c.data && typeof c.at === 'number' && now - c.at < us.MAX_AGE_MS) {
+          const d = c.data, f = d.free_model_daily_requests;
+          checked = c.at;
+          if (f && typeof f === 'object') free = { remaining: num(f.remaining), limit: num(f.limit), used: num(f.used) };
+          if (d.limit != null || d.limit_remaining != null) credit = { remaining: num(d.limit_remaining), limit: num(d.limit), usage: num(d.usage) };
+          tot.keys_with_data++;
+          if (free) { tot.free_remaining += free.remaining || 0; tot.free_limit += free.limit || 0; }
+          if (tot.oldest_check_at === null || checked < tot.oldest_check_at) tot.oldest_check_at = checked;
+          if (tot.newest_check_at === null || checked > tot.newest_check_at) tot.newest_check_at = checked;
+        }
+        return { index: i + 1, key: mask(e.key), state: stateOf(e), ready, reason: e.reason || null, until: e.blockedUntil > now ? e.blockedUntil : null, active: i === (st.active | 0), free, credit, checked_at: checked };
+      });
+      return { id: p.id, name: p.name, hint: p.keyHint, keys, totals: tot };
     }),
   };
+}
+
+// Önbelleği yeniler (usage API'si olan sağlayıcılar; varsayılan bütçe 25 sn, all = tam tarama), sonra listAll ile aynı şekli döndürür.
+async function usage(provider, opts = {}) {
+  const us = require('./usage-summary');
+  const budgetMs = opts.all ? Infinity : (opts.budgetMs > 0 ? opts.budgetMs : 25000);
+  let refreshed = 0, total = 0;
+  for (const id of ids(provider)) {
+    const p = providers.PROVIDERS[id];
+    if (!p.hasUsageApi) continue;
+    const keys = config.loadKeys(id).keys;
+    if (!keys.length) continue;
+    providers.setCurrent(id);
+    const r = await us.refreshKeyUsage(keys, { budgetMs, now: opts.now, fetchKey: opts.fetchKey });
+    refreshed += r.refreshed; total += r.total;
+  }
+  return { ...listAll({ provider, readCache: opts.readCache, now: opts.now }), refreshed, total };
 }
 
 async function add(text) {
@@ -129,4 +167,4 @@ function statsText(r) {
   return lines.join('\n');
 }
 
-module.exports = { listAll, add, remove, use, test, prune, stats, statsText, stateOf };
+module.exports = { listAll, usage, add, remove, use, test, prune, stats, statsText, stateOf };
