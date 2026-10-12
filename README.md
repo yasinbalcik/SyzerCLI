@@ -126,6 +126,21 @@ syzer                                     # etkileşimli sohbet
 syzer -y "görev"                          # tek seferlik (betikler / orkestrasyon için)
 ```
 
+## Headless / CI
+
+`--prompt "metin"`, `--prompt-file f` veya pipe/`-` ile çalışan her çalıştırma headless'tır: asla girdi beklemez (izin sorusu `-y` ile otomatik izin, aksi halde ret).
+
+```
+syzer -y --prompt "testleri düzelt" --json --quiet --timeout-minutes 20
+echo "özetle" | syzer -
+```
+
+- Öncelik: `--prompt-file` > `--prompt` > argümanlar > stdin (`-` ya da pipe; argümanla birlikte sona eklenir).
+- `--json`: stdout'ta TEK nesne: `{ok, exitCode, result, error?, budgetExceeded?, session:{id}, usage:{tokens,toolTurns,seconds}, files:{changed}}` (+ eski `content/model/tokens/key/ms`).
+- `--quiet`: araç/ilerleme satırları yok; stdout'ta yalnızca sonuç (uyarılar stderr). `--out f`: sonuç dosyaya da yazılır, hata `ERROR: ...` ile başlar.
+- `--timeout-minutes N`: aşılırsa `TIMEOUT`, çıkış kodu 1.
+- Çıkış kodları: `0` başarı · `1` hata/TIMEOUT · `2` kullanım/yapılandırma (kötü bayrak, key yok) · `3` bütçe aşıldı · `4` araç reddedildi (`-y` yok) · `130` kesildi.
+
 ## Key havuzu
 
 - Aktif key'e yapışık kalır; yalnızca limiti dolunca (402/403/429) ya da geçersizse sıradakine geçer.
