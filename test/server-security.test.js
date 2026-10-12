@@ -7,6 +7,8 @@ const path = require('path');
 
 process.env.SYZER_HOME = fsTempHome();
 const { start, hostAllowed } = require('../src/server');
+// The proxy logs ANSI/unicode banners to stdout; node:test's runner can mis-parse them as IPC frames (flaky "Unable to deserialize cloned data"), so keep this file quiet.
+console.log = () => {};
 
 function fsTempHome() { const fs = require('fs'); return fs.mkdtempSync(path.join(os.tmpdir(), 'syzer-server-')); }
 function request(server, headers = {}, method = 'GET', requestPath = '/health') {
