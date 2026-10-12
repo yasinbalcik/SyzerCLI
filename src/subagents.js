@@ -46,6 +46,8 @@ function makeSub(parent, agent, label, id, run, modelOverride) {
     get mcp() { return parent.mcp; },
     get bg() { return parent.bg; },
     get checkpoints() { return parent.checkpoints; },
+    get budget() { return parent.budget; }, // görev bütçesi ana turla paylaşılır
+    set budget(v) { parent.budget = v; },
     get cpDone() { return parent.cpDone; },
     set cpDone(v) { parent.cpDone = v; },
     get canAsk() { return parent.canAsk; },

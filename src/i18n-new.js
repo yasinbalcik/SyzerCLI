@@ -47,6 +47,8 @@ module.exports = {
     help2: `  /effort [level]   reasoning effort (auto off low medium high xhigh)
   /fallback [..]    backup models: auto | off | set <id> <id>
   /undo [N] [--force]  revert file edits of the last N turns (Syzer's file tools only, not shell side effects)
+  /budget [tokens N|turns N|minutes N|off]  per-task guard: stop the loop at a token / tool-turn / time limit
+  /continue         continue after a budget stop
   /resume           continue a saved session
   /stats            requests and tokens per day
   /plan · /go       plan first, then approve and execute`,
@@ -97,6 +99,8 @@ module.exports = {
     help2: `  /effort [seviye]  düşünme eforu (auto off low medium high xhigh)
   /fallback [..]    yedek modeller: auto | off | set <id> <id>
   /undo [N] [--force]  son N turun dosya düzenlemelerini geri al (yalnız Syzer'in dosya araçları, kabuk yan etkileri hariç)
+  /budget [tokens N|turns N|minutes N|off]  görev başına koruma: token / araç turu / süre sınırında döngüyü durdur
+  /continue         bütçe duruşundan sonra devam et
   /resume           kayıtlı oturuma devam et
   /stats            günlük istek ve token istatistiği
   /plan · /go       önce plan, sonra onay ve uygulama`,

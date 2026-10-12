@@ -18,6 +18,7 @@ const GLOBAL_DEFAULTS = {
   subagentConcurrency: 3,
   setupDone: false, // ilk kurulum sihirbazı tamamlandı mı
   autoUpdate: true, // açılışta GitHub'dan güncelleme kontrolü
+  budget: { tokens: null, turns: null, minutes: null }, // görev başına bütçe koruması (null = kapalı)
 };
 
 // Her sağlayıcı için ayrı tutulan ayarlar (model, effort, yedek modeller, subagent modeli)

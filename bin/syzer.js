@@ -47,7 +47,8 @@ const HELP = `SyzerCLI v${pkg.version}
   syzer usage --summary --json  percent used per provider (for status bars / Orca)
   syzer perm [ask|auto|readonly]
 
-flags: --resume <id> (continue a saved session)  --provider <name> (this run only)  -a/--agent <name> (run as that agent)  --no-agents  -e/--effort <level>  -c/--continue (resume last session)  -k/--key <n> (use key n for this run)  -p/--print  -y/--yes (auto-approve tools)  -m/--model <id>  --json  --no-tools  --no-check`;
+flags: --resume <id> (continue a saved session)  --provider <name> (this run only)  -a/--agent <name> (run as that agent)  --no-agents  -e/--effort <level>  -c/--continue (resume last session)  -k/--key <n> (use key n for this run)  -p/--print  -y/--yes (auto-approve tools)  -m/--model <id>  --json  --no-tools  --no-check
+       --budget-tokens N  --budget-turns N  --budget-minutes N (per-task guard; env SYZER_BUDGET_TOKENS/TURNS/MINUTES; /budget in chat)`;
 
 function parseArgs(argv) {
   const f = { rest: [] };
@@ -74,6 +75,9 @@ function parseArgs(argv) {
     else if (a === '--provider') f.provider = argv[++i];
     else if (a === '-e' || a === '--effort') f.effort = argv[++i];
     else if (a === '-a' || a === '--agent') f.agent = argv[++i];
+    else if (a === '--budget-tokens') f.budgetTokens = argv[++i];
+    else if (a === '--budget-turns') f.budgetTurns = argv[++i];
+    else if (a === '--budget-minutes') f.budgetMinutes = argv[++i];
     else if (a === '--port') f.port = argv[++i];
     else if (a === '--host') f.host = argv[++i];
     else if (a === '--token') f.token = argv[++i];
@@ -108,6 +112,8 @@ async function readPastedLines() {
   return text;
 }
 
+const budgetFlagsOf = (f) => ({ tokens: f.budgetTokens, turns: f.budgetTurns, minutes: f.budgetMinutes });
+
 async function printMode(cfg, f, prompt) {
   const log = (s) => process.stderr.write(s + '\n');
   const out = {
@@ -119,6 +125,7 @@ async function printMode(cfg, f, prompt) {
   if (f.title && process.stdout.isTTY) process.stdout.write(`\x1b]0;${f.title}\x07`);
   const perm = f.yes ? 'auto' : cfg.permissions === 'auto' ? 'auto' : 'readonly';
   const base = createSession(cfg, { model: f.model, perm, effort: f.effort, useTools: !f.noTools, agents: !f.noAgents, out });
+  base.budgetFlags = budgetFlagsOf(f);
   let s = base;
   if (f.agent) {
     const def = base.ctx.agents.find((x) => x.name === f.agent);
@@ -127,6 +134,7 @@ async function printMode(cfg, f, prompt) {
     if (f.model) s.model = f.model;
     if (f.effort) s.effort = f.effort;
     s.maxSteps = 30;
+    s.budgetFlags = base.budgetFlags;
   }
   if (Object.keys(base.settings.mcpServers).length && !f.noTools) {
     base.mcp = await new McpManager().load(base.settings.mcpServers, base.cwd);
@@ -137,11 +145,13 @@ async function printMode(cfg, f, prompt) {
   try { r = await runTurn(s, prompt); }
   catch (e) { writeOut(`ERROR: ${e.message}`); throw e; }
   finally { killAll(base); if (base.mcp) base.mcp.close(); }
-  writeOut(r.content || '(no output)');
+  const bx = r.budgetExceeded ? `BUDGET EXCEEDED: ${r.budgetExceeded}` : '';
+  const body = bx ? `${bx}${r.content ? `\n\n${r.content}` : ''}` : r.content;
+  writeOut(body || '(no output)');
   if (f.json) {
-    console.log(JSON.stringify({ content: r.content, model: s.model, tokens: r.tokens, key: r.keyIndex + 1, ms: r.ms }));
+    console.log(JSON.stringify({ content: r.content, model: s.model, tokens: r.tokens, key: r.keyIndex + 1, ms: r.ms, ...(bx ? { budgetExceeded: r.budgetExceeded } : {}) }));
   } else {
-    console.log(r.content);
+    console.log(body);
   }
 }
 
@@ -251,7 +261,7 @@ async function main() {
     if (!prompt) return console.error('No prompt given.');
     return printMode(cfg, f, prompt);
   }
-  return require('../src/repl').start(cfg, { model: f.model, perm: f.yes ? 'auto' : undefined, effort: f.effort, resume: f.resume, resumeId: f.resumeId, agents: !f.noAgents, useTools: !f.noTools });
+  return require('../src/repl').start(cfg, { budgetFlags: budgetFlagsOf(f), model: f.model, perm: f.yes ? 'auto' : undefined, effort: f.effort, resume: f.resume, resumeId: f.resumeId, agents: !f.noAgents, useTools: !f.noTools });
 }
 
 main().catch((e) => { console.error(`${C.red('✖')} ${e.message}`); process.exitCode = 1; });

@@ -31,7 +31,7 @@ const { headerRows } = header;
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const BUILTIN = ['help', 'model', 'models', 'usage', 'keys', 'lang', 'perm', 'skills', 'context', 'clear', 'exit',
   'effort', 'fallback', 'undo', 'resume', 'stats', 'plan', 'go', 'agents', 'subagent',
-  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web', 'runs', 'run', 'tree'];
+  'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web', 'runs', 'run', 'tree', 'budget', 'continue'];
 const LABEL = { read_file: 'Read', write_file: 'Write', edit_file: 'Update', list_dir: 'List', find_files: 'Find', search_files: 'Search', run_command: 'Run', use_skill: 'Skill', spawn_agent: 'Agent', run_plan: 'Plan' };
 const PLAN_PREFIX = '[PLAN MODE] Use read-only tools only. Do NOT modify anything. Investigate, then answer with a concise numbered plan and ask for approval at the end.\n\n';
 
@@ -236,6 +236,7 @@ async function start(cfg, opts = {}, io = {}) {
   };
 
   const s = createSession(cfg, { ...opts, canAsk: true, confirm, out: makeOut() });
+  s.budgetFlags = opts.budgetFlags;
   if (opts.resumeId) { const sv = sessions.find(opts.resumeId); if (sv) { if (sv.cwd && sv.cwd !== s.cwd) console.log(C.yellow(`⚠ ${sv.cwd}`)); resume(s, sv); } else console.log(C.yellow(`Oturum bulunamadı / Session not found: ${opts.resumeId}  (${require('./config').DIR})`)); }
   else if (opts.resume) { const last = sessions.list(s.cwd)[0]; if (last) resume(s, last); }
   if (Object.keys(s.settings.mcpServers).length) {
@@ -518,6 +519,8 @@ async function start(cfg, opts = {}, io = {}) {
       case 'agents': cmds.agentsList(s.ctx.agents, cfg); return;
       case 'subagent': await cmds.subagentSet(cfg, rest); return;
       case 'stats': cmds.statsShow(); return;
+      case 'budget': cmds2.budgetCmd(cfg, rest, s); return;
+      case 'continue': await chat('Continue the previous task where you left off.'); return;
       case 'undo': {
         cmds2.undoRun(s, rest);
         return;

@@ -168,8 +168,40 @@ function undoRun(session, args) {
   }
 }
 
+// ---------- görev bütçesi (/budget) ----------
+
+const BUDGET_ALIAS = { tokens: 'tokens', token: 'tokens', turns: 'turns', turn: 'turns', minutes: 'minutes', min: 'minutes', mins: 'minutes' };
+
+function budgetCmd(cfg, args, session) {
+  const B = require('./budget');
+  const [a, v] = args;
+  const save = () => { try { require('./config').save(cfg); } catch { /* önemsiz */ } };
+  cfg.budget = B.normalize(cfg.budget);
+  if (a === 'off') {
+    cfg.budget = B.normalize(null);
+    save();
+    return log(C.green('✔ Budget guard off.'));
+  }
+  if (a) {
+    const dim = BUDGET_ALIAS[String(a).toLowerCase()];
+    if (!dim || v === undefined) return log(C.yellow('Usage: /budget [tokens N | turns N | minutes N | off]'));
+    const n = B.parseLimit(v);
+    if (n === undefined) return log(C.yellow(`Invalid value "${v}" (positive number, or "off").`));
+    cfg.budget[dim] = n;
+    save();
+  }
+  const eff = B.resolve(cfg.budget, process.env, (session && session.budgetFlags) || {});
+  const used = session && session.budget ? session.budget.used() : null;
+  B.DIMS.forEach((d) => {
+    const env = process.env[B.ENV[d]] ? C.gray(` (env ${B.ENV[d]})`) : '';
+    const u = used ? C.gray(`  used ${B.fmt(d, used[d])}`) : '';
+    log(`  ${C.cyan(d.padEnd(8))} ${eff[d] === null ? C.gray('off') : C.bold(B.fmt(d, eff[d]))}${env}${u}`);
+  });
+  if (B.DIMS.every((d) => eff[d] === null)) log(C.gray('  Per-task guard is off. Example: /budget tokens 400000'));
+}
+
 module.exports = {
-  fileCheckpointsShow, undoRun,
+  budgetCmd, fileCheckpointsShow, undoRun,
   rulesList, ruleAdd, ruleRemove, tasksShow, todosShow, gitDiffShow, commitFlow, reviewPrompt,
   checkpointsShow, restoreFlow, noteMemory,
 };

@@ -108,6 +108,12 @@ async function runTurn(session, userContent, signal) {
   const t0 = Date.now();
   let finalText = '';
   let nagged = false;
+  let budgetStop = null;
+  const B = require('./budget');
+  if (top || !session.budget) { // ana tur bütçeyi sıfırlar; süreç içi alt ajanlar aynı sayaca yazar
+    session.budget = B.createTracker(B.resolve(session.cfg.budget, process.env, session.budgetFlags));
+  }
+  const bud = session.budget;
 
   try {
     const maxSteps = session.maxSteps || MAX_STEPS;
@@ -132,6 +138,7 @@ async function runTurn(session, userContent, signal) {
       totals.model = call.model;
       if (res.usage?.total_tokens) totals.tokens += res.usage.total_tokens;
       finalText = res.content;
+      B.onResponse(bud, res, session.messages, (m) => out.warn(m));
 
       const assistant = { role: 'assistant', content: res.content || '' };
       if (res.toolCalls.length) {
@@ -194,6 +201,8 @@ async function runTurn(session, userContent, signal) {
           record(tc, r);
         }
       }
+      budgetStop = B.stopReason(bud, (m) => out.warn(m));
+      if (budgetStop) break; // geçerli araç grubu bitti; bütçe aşıldı
       if (step === maxSteps - 1) out.warn(t('max_iter'));
     }
   } catch (err) {
@@ -202,9 +211,17 @@ async function runTurn(session, userContent, signal) {
     throw err;
   }
 
+  let budgetExceeded;
+  if (budgetStop) {
+    budgetExceeded = B.stopMessage(budgetStop);
+    if (top) {
+      out.warn(`BUDGET EXCEEDED: ${budgetExceeded}`);
+      session.messages.push({ role: 'assistant', content: `[budget exceeded: ${budgetStop}. Stopped after the last tool batch; the user may continue.]` });
+    } else finalText = `${finalText || ''}\n[budget exceeded: ${budgetStop}; stopped early]`.trim();
+  }
   totals.ms = Date.now() - t0;
   if (top) hooks.turnDone(finalText);
-  return { content: finalText, ...totals };
+  return { content: finalText, ...totals, ...(budgetExceeded ? { budgetExceeded } : {}) };
 }
 
 module.exports = { runTurn };
