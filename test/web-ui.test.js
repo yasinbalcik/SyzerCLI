@@ -98,3 +98,11 @@ test('interactive controls use at least 44px touch targets and localized labels'
   assert.match(html, /id="tr"[^>]*data-a="rightPanel"/);
   assert.match(html, /id="theme-btn"[^>]*data-a="toggleTheme"/);
 });
+
+test('inline script parses cleanly without syntax errors', () => {
+  const match = html.match(/<script>([\s\S]*)<\/script>/);
+  assert.ok(match, 'script tag exists');
+  assert.doesNotThrow(() => {
+    new Function(match[1]);
+  });
+});

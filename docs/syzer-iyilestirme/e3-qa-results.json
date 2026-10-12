@@ -1,0 +1,510 @@
+[
+  {
+    "cellKey": "TR-dark-1440px",
+    "lang": "tr",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "initialOverflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": false
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-tr-dark-1440-1-initial.png",
+      "populated": "cell-tr-dark-1440-2-populated.png",
+      "modal": "cell-tr-dark-1440-3-modal.png",
+      "drawer": null
+    }
+  },
+  {
+    "cellKey": "TR-dark-1024px",
+    "lang": "tr",
+    "theme": "dark",
+    "width": 1024,
+    "height": 768,
+    "initialOverflow": {
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": true,
+      "leftOpen": true,
+      "leftClosed": true,
+      "rightOpen": true,
+      "rightClosed": true,
+      "drawerShot": "C:\\Users\\ROOT\\orca\\workspaces\\SyzerCLI\\syzer-E3\\docs\\syzer-iyilestirme\\screenshots\\cell-tr-dark-1024-4-drawer.png"
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-tr-dark-1024-1-initial.png",
+      "populated": "cell-tr-dark-1024-2-populated.png",
+      "modal": "cell-tr-dark-1024-3-modal.png",
+      "drawer": "cell-tr-dark-1024-4-drawer.png"
+    }
+  },
+  {
+    "cellKey": "TR-dark-390px",
+    "lang": "tr",
+    "theme": "dark",
+    "width": 390,
+    "height": 844,
+    "initialOverflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": true,
+      "leftOpen": true,
+      "leftClosed": true,
+      "rightOpen": true,
+      "rightClosed": true,
+      "drawerShot": "C:\\Users\\ROOT\\orca\\workspaces\\SyzerCLI\\syzer-E3\\docs\\syzer-iyilestirme\\screenshots\\cell-tr-dark-390-4-drawer.png"
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-tr-dark-390-1-initial.png",
+      "populated": "cell-tr-dark-390-2-populated.png",
+      "modal": "cell-tr-dark-390-3-modal.png",
+      "drawer": "cell-tr-dark-390-4-drawer.png"
+    }
+  },
+  {
+    "cellKey": "TR-light-1440px",
+    "lang": "tr",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "initialOverflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": false
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-tr-light-1440-1-initial.png",
+      "populated": "cell-tr-light-1440-2-populated.png",
+      "modal": "cell-tr-light-1440-3-modal.png",
+      "drawer": null
+    }
+  },
+  {
+    "cellKey": "TR-light-1024px",
+    "lang": "tr",
+    "theme": "light",
+    "width": 1024,
+    "height": 768,
+    "initialOverflow": {
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": true,
+      "leftOpen": true,
+      "leftClosed": true,
+      "rightOpen": true,
+      "rightClosed": true,
+      "drawerShot": "C:\\Users\\ROOT\\orca\\workspaces\\SyzerCLI\\syzer-E3\\docs\\syzer-iyilestirme\\screenshots\\cell-tr-light-1024-4-drawer.png"
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-tr-light-1024-1-initial.png",
+      "populated": "cell-tr-light-1024-2-populated.png",
+      "modal": "cell-tr-light-1024-3-modal.png",
+      "drawer": "cell-tr-light-1024-4-drawer.png"
+    }
+  },
+  {
+    "cellKey": "TR-light-390px",
+    "lang": "tr",
+    "theme": "light",
+    "width": 390,
+    "height": 844,
+    "initialOverflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": true,
+      "leftOpen": true,
+      "leftClosed": true,
+      "rightOpen": true,
+      "rightClosed": true,
+      "drawerShot": "C:\\Users\\ROOT\\orca\\workspaces\\SyzerCLI\\syzer-E3\\docs\\syzer-iyilestirme\\screenshots\\cell-tr-light-390-4-drawer.png"
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-tr-light-390-1-initial.png",
+      "populated": "cell-tr-light-390-2-populated.png",
+      "modal": "cell-tr-light-390-3-modal.png",
+      "drawer": "cell-tr-light-390-4-drawer.png"
+    }
+  },
+  {
+    "cellKey": "EN-dark-1440px",
+    "lang": "en",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "initialOverflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": false
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-en-dark-1440-1-initial.png",
+      "populated": "cell-en-dark-1440-2-populated.png",
+      "modal": "cell-en-dark-1440-3-modal.png",
+      "drawer": null
+    }
+  },
+  {
+    "cellKey": "EN-dark-1024px",
+    "lang": "en",
+    "theme": "dark",
+    "width": 1024,
+    "height": 768,
+    "initialOverflow": {
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": true,
+      "leftOpen": true,
+      "leftClosed": true,
+      "rightOpen": true,
+      "rightClosed": true,
+      "drawerShot": "C:\\Users\\ROOT\\orca\\workspaces\\SyzerCLI\\syzer-E3\\docs\\syzer-iyilestirme\\screenshots\\cell-en-dark-1024-4-drawer.png"
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-en-dark-1024-1-initial.png",
+      "populated": "cell-en-dark-1024-2-populated.png",
+      "modal": "cell-en-dark-1024-3-modal.png",
+      "drawer": "cell-en-dark-1024-4-drawer.png"
+    }
+  },
+  {
+    "cellKey": "EN-dark-390px",
+    "lang": "en",
+    "theme": "dark",
+    "width": 390,
+    "height": 844,
+    "initialOverflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": true,
+      "leftOpen": true,
+      "leftClosed": true,
+      "rightOpen": true,
+      "rightClosed": true,
+      "drawerShot": "C:\\Users\\ROOT\\orca\\workspaces\\SyzerCLI\\syzer-E3\\docs\\syzer-iyilestirme\\screenshots\\cell-en-dark-390-4-drawer.png"
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-en-dark-390-1-initial.png",
+      "populated": "cell-en-dark-390-2-populated.png",
+      "modal": "cell-en-dark-390-3-modal.png",
+      "drawer": "cell-en-dark-390-4-drawer.png"
+    }
+  },
+  {
+    "cellKey": "EN-light-1440px",
+    "lang": "en",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "initialOverflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": false
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-en-light-1440-1-initial.png",
+      "populated": "cell-en-light-1440-2-populated.png",
+      "modal": "cell-en-light-1440-3-modal.png",
+      "drawer": null
+    }
+  },
+  {
+    "cellKey": "EN-light-1024px",
+    "lang": "en",
+    "theme": "light",
+    "width": 1024,
+    "height": 768,
+    "initialOverflow": {
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": true,
+      "leftOpen": true,
+      "leftClosed": true,
+      "rightOpen": true,
+      "rightClosed": true,
+      "drawerShot": "C:\\Users\\ROOT\\orca\\workspaces\\SyzerCLI\\syzer-E3\\docs\\syzer-iyilestirme\\screenshots\\cell-en-light-1024-4-drawer.png"
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-en-light-1024-1-initial.png",
+      "populated": "cell-en-light-1024-2-populated.png",
+      "modal": "cell-en-light-1024-3-modal.png",
+      "drawer": "cell-en-light-1024-4-drawer.png"
+    }
+  },
+  {
+    "cellKey": "EN-light-390px",
+    "lang": "en",
+    "theme": "light",
+    "width": 390,
+    "height": 844,
+    "initialOverflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "noOverflow": true
+    },
+    "populatedOverflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "noOverflow": true
+    },
+    "skillSelected": true,
+    "offlineBannerTest": {
+      "offlineVisible": true,
+      "offlineHidden": true
+    },
+    "modalTest": {
+      "modalVisible": true,
+      "modalButtonsCount": 4,
+      "modalActiveTag": "yes",
+      "modalClosed": true
+    },
+    "drawerResult": {
+      "tested": true,
+      "leftOpen": true,
+      "leftClosed": true,
+      "rightOpen": true,
+      "rightClosed": true,
+      "drawerShot": "C:\\Users\\ROOT\\orca\\workspaces\\SyzerCLI\\syzer-E3\\docs\\syzer-iyilestirme\\screenshots\\cell-en-light-390-4-drawer.png"
+    },
+    "errors": [],
+    "passed": true,
+    "shots": {
+      "initial": "cell-en-light-390-1-initial.png",
+      "populated": "cell-en-light-390-2-populated.png",
+      "modal": "cell-en-light-390-3-modal.png",
+      "drawer": "cell-en-light-390-4-drawer.png"
+    }
+  }
+]
