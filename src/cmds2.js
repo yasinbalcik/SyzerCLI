@@ -200,8 +200,44 @@ function budgetCmd(cfg, args, session) {
   if (B.DIMS.every((d) => eff[d] === null)) log(C.gray('  Per-task guard is off. Example: /budget tokens 400000'));
 }
 
+// ---------- model yönlendirme (/route) ----------
+
+async function routeCmd(cfg, args) {
+  const R = require('./routing');
+  const [a, b] = args;
+  const save = () => { try { require('./config').save(cfg); } catch { /* önemsiz */ } };
+  cfg.routing = R.normalize(cfg.routing);
+  if (a === 'reset') {
+    cfg.routing = R.normalize(null);
+    save();
+    return log(C.green('✔ Routing reset (all roles back to defaults).'));
+  }
+  if (a === 'escalate' && b) {
+    if (!['on', 'off', 'true', 'false'].includes(b)) return log(C.yellow('Usage: /route escalate on|off'));
+    cfg.routing.escalate = b === 'on' || b === 'true';
+    save();
+  } else if (a) {
+    if (!R.ROLES.includes(a) || !b) return log(C.yellow(`Usage: /route [${R.ROLES.join('|')}] <model|default> | escalate on|off | reset`));
+    if (b === 'default' || b === 'off') delete cfg.routing[a];
+    else {
+      let known = null;
+      try { known = (await require('./models').allModels({ cacheOnly: true })).map((m) => m.id); } catch { /* liste yok: denetim atlanır */ }
+      cfg.routing[a] = b;
+      R.validate({ [a]: b }, known).warnings.forEach((w) => log(C.yellow(`⚠ ${w}`)));
+    }
+    save();
+  }
+  log(C.bold('Model routing'));
+  R.ROLES.forEach((r) => {
+    const x = R.resolve(r, cfg);
+    const src = x.source === 'env' ? C.gray(`(env ${R.ENV[r]})`) : x.source === 'config' ? C.gray('(config)') : C.gray('(default)');
+    log(`  ${C.cyan(r.padEnd(10))} ${x.model ? C.bold(x.model) : C.gray('session model')} ${src}`);
+  });
+  log(`  ${C.cyan('escalate'.padEnd(10))} ${cfg.routing.escalate ? C.bold('on') : C.gray('off')}`);
+}
+
 module.exports = {
-  budgetCmd, fileCheckpointsShow, undoRun,
+  routeCmd, budgetCmd, fileCheckpointsShow, undoRun,
   rulesList, ruleAdd, ruleRemove, tasksShow, todosShow, gitDiffShow, commitFlow, reviewPrompt,
   checkpointsShow, restoreFlow, noteMemory,
 };

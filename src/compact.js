@@ -221,7 +221,8 @@ async function compactSession(session, { mode = 'auto', hint = '', win, say, thr
     threshold = resolveThreshold({ cfg: session.cfg || {}, win: w });
     session.compactThreshold = threshold;
   }
-  const cheap = session.cfg && session.cfg.subagentModel;
+  const rt = require('./routing');
+  const cheap = session.cfg && ((rt.explicit('summarize', session.cfg) || {}).model || session.cfg.subagentModel); // routing.summarize > subagentModel > oturum modeli
   const deps = {
     persist: (msgs) => persistPrecompact(precompactDir(session.sessionId), msgs),
     summarize: async (transcript, h) => {

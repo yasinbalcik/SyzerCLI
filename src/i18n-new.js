@@ -49,6 +49,7 @@ module.exports = {
   /undo [N] [--force]  revert file edits of the last N turns (Syzer's file tools only, not shell side effects)
   /budget [tokens N|turns N|minutes N|off]  per-task guard: stop the loop at a token / tool-turn / time limit
   /continue         continue after a budget stop
+  /route [role model|escalate on|off|reset]  per-role models: explore plan edit summarize (env SYZER_ROUTE_<ROLE>)
   /resume           continue a saved session
   /stats            requests and tokens per day
   /plan · /go       plan first, then approve and execute`,
@@ -101,6 +102,7 @@ module.exports = {
   /undo [N] [--force]  son N turun dosya düzenlemelerini geri al (yalnız Syzer'in dosya araçları, kabuk yan etkileri hariç)
   /budget [tokens N|turns N|minutes N|off]  görev başına koruma: token / araç turu / süre sınırında döngüyü durdur
   /continue         bütçe duruşundan sonra devam et
+  /route [rol model|escalate on|off|reset]  rol başına model: explore plan edit summarize (ortam SYZER_ROUTE_<ROL>)
   /resume           kayıtlı oturuma devam et
   /stats            günlük istek ve token istatistiği
   /plan · /go       önce plan, sonra onay ve uygulama`,

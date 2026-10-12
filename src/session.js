@@ -10,7 +10,7 @@ function createSession(cfg, { cwd = process.cwd(), model, perm, effort, useTools
     cfg,
     cwd,
     ctx,
-    model: model || cfg.model,
+    model: model || ((require('./routing').explicit('edit', cfg) || {}).model) || cfg.model, // routing.edit yalnızca açıkça ayarlıysa
     perm: perm || cfg.permissions || 'ask',
     effort: effort || cfg.effort || 'auto',
     plan: false,

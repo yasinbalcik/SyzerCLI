@@ -67,19 +67,29 @@ async function runPlan(session, call, signal) {
       if (item.model) args.model = item.model;
       if (readOnly) args.read_only = true;
       let r;
+      let escalatedTo = null;
       try {
         r = await spawn(session, { arguments: JSON.stringify(args) }, signal);
+        const first = r;
         if (isBad(r) && !(signal && signal.aborted)) { // geçici hata / adım sınırı: bir kez daha, daha geniş bütçeyle
           const why = r.stopped ? 'ran out of steps' : r.ok ? 'returned no report' : 'failed';
           if (session.out.warn) session.out.warn(`[${item.agent}: ${trunc(item.content, 30)}] ${why}; retrying once`);
           const retry = { ...args, max_steps: RETRY_STEPS, prompt: `${args.prompt}\n\n(Your previous attempt ${why}. Be efficient: read only what you need, then finish with your final report.)` };
           r = await spawn(session, { arguments: JSON.stringify(retry) }, signal);
+          // routing.escalate: ucuz rol modeli iki kez üst üste başarısızsa ana/edit modeliyle bir kez daha (görev başına en çok 1)
+          const R = require('./routing');
+          const target = (R.explicit('edit', session.cfg) || {}).model || session.model;
+          if (R.shouldEscalate({ enabled: R.normalize((session.cfg || {}).routing).escalate, first, second: r, used: r.model, target, routedRole: r.routedRole || first.routedRole, done: false }, isBad) && !(signal && signal.aborted)) {
+            if (session.out.warn) session.out.warn(`[${item.agent}: ${trunc(item.content, 30)}] failed twice on ${r.model}; escalating to ${target}`);
+            r = await spawn(session, { arguments: JSON.stringify({ ...retry, model: target }) }, signal);
+            escalatedTo = target;
+          }
         }
       } catch (err) { item.status = 'pending'; throw err; } // iptal: madde bekleyen kalsın
       const bad = isBad(r);
       if (!bad) { item.status = 'completed'; reports.set(item.id, r.output); (session.planDone ||= new Set()).add(item.id); }
       else { item.status = 'pending'; item.error = (r.stopped ? 'stopped at step limit' : r.ok ? 'empty report' : String(r.output || 'failed')).replace(/\s+/g, ' ').slice(0, 160); }
-      results.push({ item, ok: !bad, output: r.output });
+      results.push({ item, ok: !bad, output: escalatedTo ? `(escalated to ${escalatedTo})\n${r.output}` : r.output });
     }));
     if (signal && signal.aborted) break;
   }

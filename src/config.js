@@ -23,7 +23,7 @@ const GLOBAL_DEFAULTS = {
 };
 
 // Her sağlayıcı için ayrı tutulan ayarlar (model, effort, yedek modeller, subagent modeli)
-const PER_PROVIDER = ['model', 'effort', 'fallback', 'subagentModel'];
+const PER_PROVIDER = ['model', 'effort', 'fallback', 'subagentModel', 'routing'];
 
 const readJson = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 const writeJson = (p, obj) => {
@@ -53,7 +53,7 @@ function saveKeys(provider, store) {
 function providerDefaults(provider) {
   const { PROVIDERS } = require('./providers');
   const p = PROVIDERS[provider];
-  return { model: p.defaultModel, effort: 'auto', fallback: p.defaultFallback, subagentModel: null };
+  return { model: p.defaultModel, effort: 'auto', fallback: p.defaultFallback, subagentModel: null, routing: {} }; // routing: rol → model (explore|plan|edit|summarize) + escalate; boş = kapalı
 }
 
 // cfg nesnesini verilen sağlayıcının ayarları ve key'leriyle yerinde günceller
