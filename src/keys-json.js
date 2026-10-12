@@ -4,6 +4,7 @@
 const config = require('./config');
 const providers = require('./providers');
 const { mask, usable, addKeys } = require('./keys');
+const { validateKey } = require('./api');
 
 const stateOf = (e) => (e.disabled ? 'off' : e.blockedUntil > Date.now() ? 'wait' : 'ready');
 
@@ -46,4 +47,49 @@ function use(provider, n) {
   return { ok: true };
 }
 
-module.exports = { listAll, add, remove, use };
+const ids = (provider) => (provider ? [provider] : providers.list().map((p) => p.id)).filter((id) => providers.PROVIDERS[id]);
+
+// Canlı doğrulama: 401/403 => key kapatılır (disabled + reason); başarılıysa daha önce 401/403 ile kapatılmış key tekrar açılır.
+// Geçici hatalar (429/5xx/ağ) key'i değiştirmez. Çıktı: { providers: [{ id, keys: [{ index, state, reason }] }] }
+async function test(provider, validate = validateKey) {
+  const out = [];
+  for (const id of ids(provider)) {
+    const st = config.loadKeys(id);
+    const p = providers.PROVIDERS[id];
+    await Promise.all(st.keys.map(async (e) => {
+      try {
+        await validate(p, e.key);
+        if (e.disabled && /^(401|403)/.test(String(e.reason || ''))) { delete e.disabled; delete e.reason; }
+      } catch (err) {
+        const why = `${err.status || ''} ${err.message}`.trim();
+        if (/^(401|403)/.test(why)) { e.disabled = true; e.reason = why.slice(0, 3); }
+      }
+    }));
+    if (st.keys.length) config.saveKeys(id, st);
+    out.push({ id, keys: st.keys.map((e, i) => ({ index: i + 1, state: stateOf(e), reason: e.reason || null })) });
+  }
+  return { providers: out };
+}
+
+// state != ready olan key'leri siler (tek yazımda; aktif işaretçi doğru key'i izler).
+function prune(provider) {
+  const out = []; let removed = 0;
+  for (const id of ids(provider)) {
+    const st = config.loadKeys(id);
+    const act = Math.min(st.active | 0, Math.max(0, st.keys.length - 1));
+    const keep = st.keys.filter((e) => stateOf(e) === 'ready');
+    const n = st.keys.length - keep.length;
+    if (n) {
+      const ak = st.keys[act];
+      let na = keep.indexOf(ak);
+      if (na < 0) na = Math.max(0, Math.min(st.keys.slice(0, act).filter((e) => stateOf(e) === 'ready').length, keep.length - 1));
+      st.keys = keep; st.active = na;
+      config.saveKeys(id, st);
+      removed += n;
+    }
+    out.push({ id, removed: n, left: st.keys.length });
+  }
+  return { ok: true, removed, providers: out };
+}
+
+module.exports = { listAll, add, remove, use, test, prune, stateOf };

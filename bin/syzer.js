@@ -23,7 +23,7 @@ const HELP = `SyzerCLI v${pkg.version}
   syzer [flags] "prompt"      one-shot answer (for scripts / orchestration)
   syzer provider [openrouter|nvidia]  switch provider (each has its own key file)
   syzer key add [keys|--file f]  add many keys at once; provider is detected from the key format
-  syzer key list | use <n> | remove <n> | reset
+  syzer key list | use <n> | remove <n> | reset | test | prune  (test/prune print JSON; --provider p)
   syzer usage [--json] [--check]  per-key status (OpenRouter: free requests/credit; NVIDIA: local counts, --check verifies live)
   syzer models [text] [--check] [--all]  list models (NVIDIA: --check finds which work on your account)
   syzer model [set <id>]      show / set the default model
@@ -157,12 +157,14 @@ async function main() {
 
   const [cmd, sub, ...more] = f.rest;
 
-  if ((cmd === 'key' || cmd === 'keys') && f.json) { // makine okunur çıktı (Orca vb.)
+  if ((cmd === 'key' || cmd === 'keys') && (f.json || sub === 'test' || sub === 'prune')) { // makine okunur çıktı (Orca vb.)
     const kj = require('../src/keys-json');
     const out = (o) => console.log(JSON.stringify(o));
     if (sub === 'add') return out(await kj.add(more.join(String.fromCharCode(10)) || (process.stdin.isTTY ? '' : await readStdin())));
     if (sub === 'remove' || sub === 'rm') return out(kj.remove(f.provider || cfg.provider, more[0]));
     if (sub === 'use') return out(kj.use(f.provider || cfg.provider, more[0]));
+    if (sub === 'test') return out(await kj.test(f.provider));
+    if (sub === 'prune') return out(kj.prune(f.provider));
     return out(kj.listAll());
   }
   if (cmd === 'key' || cmd === 'keys') {
