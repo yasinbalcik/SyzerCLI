@@ -20,7 +20,7 @@ try {
 }
 
 const a2Ready = Boolean(prompts);
-const limitsReady = Boolean(limits || (prompts && prompts.LIMITS));
+const limitsReady = Boolean(limits || (prompts && prompts.LIMITS)); // src/limits.js dışa aktarımı { LIMITS }
 const skipPrompt = (!a2Ready && !process.env.A2_STRICT) ? 'waiting for A2 implementation in src/prompts.js' : false;
 const skipLimits = (!limitsReady && !process.env.A2_STRICT) ? 'waiting for A2 implementation in src/limits.js' : false;
 
@@ -30,7 +30,7 @@ function getPrompts() {
 }
 
 function getLimits() {
-  const l = limits || (prompts && prompts.LIMITS);
+  const l = (limits && limits.LIMITS) || (prompts && prompts.LIMITS);
   if (!l) assert.fail('src/limits.js has not been implemented yet (A2 implementation required)');
   return l;
 }
@@ -195,7 +195,7 @@ test('golden: subagentSystem() hierarchy, no questions to user, task language re
     name: 'explore',
     prompt: 'You are an exploration agent.',
   };
-  const out = P.subagentSystem({ ctx, agent, language: 'Turkish' });
+  const out = P.subagentSystem({ ctx, agent, language: 'tr' });
 
   assert.ok(out.includes('subagent working for a lead agent'), 'must mention hierarchy');
   assert.ok(out.includes('cannot ask the user questions'), 'must forbid asking questions to user');
@@ -276,7 +276,7 @@ test('golden: toolDescription("edit_file") and toolDescription("todo_write")', {
   assert.ok(/re-read/i.test(edit), 'edit_file must instruct re-reading on mismatch');
 
   const todo = P.toolDescription('todo_write');
-  assert.ok(/3\+\s*(distinct\s*steps|steps)/i.test(todo), 'todo_write must specify 3+ steps');
+  assert.ok(/3\+\s*(genuinely\s+)?(distinct\s+)?steps/i.test(todo), 'todo_write must specify 3+ steps');
   assert.ok(/full list/i.test(todo), 'todo_write must require full list');
   assert.ok(/one in_progress/i.test(todo), 'todo_write must require one in_progress');
   assert.ok(/agent/i.test(todo) && /depends_on/i.test(todo), 'todo_write must mention orchestra fields');

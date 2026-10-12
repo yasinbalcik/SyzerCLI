@@ -96,10 +96,10 @@ test('planPrefix keeps the legacy [PLAN MODE] first line + blank line', () => {
 test('subagentSystem: base, role, hierarchy, no questions, report language, file order', () => {
   const ctx = { header: P.base({ cwd: '/w', platform: 'linux', language: 'en' }), files: [{ path: 'A.md', text: 'aaa' }, { path: 'B.md', text: 'bbb' }] };
   const s = P.subagentSystem({ ctx, agent: { name: 'explore', builtin: true, prompt: P.role({ name: 'explore' }) }, language: 'tr' });
-  assert.ok(sorted(ids(s, ['[BASE]', '[ROLE:explore]', 'lider ajan', '--- A.md ---', '--- B.md ---'])));
-  assert.match(s, /soru soramazsın/);
+  assert.ok(sorted(ids(s, ['[BASE]', '[ROLE:explore]', 'subagent working for a lead agent', '--- A.md ---', '--- B.md ---'])));
+  assert.match(s, /cannot ask the user questions/);
   assert.match(P.subagentSystem({ ctx, agent: { name: 'x', prompt: 'p' }, language: 'en' }), /subagent working for a lead agent. You cannot ask the user/);
-  assert.match(s, /Write your final report in Türkçe/);
+  assert.match(s, /Write your final report in Turkish/);
   const custom = P.subagentSystem({ ctx, agent: { name: 'mine', prompt: 'Do X.' } });
   assert.match(custom, /\[ROLE:mine\]\nDo X\./);
   assert.match(custom, /same language as the task/);
@@ -118,11 +118,12 @@ test('orchestra: rules, dependency context (limit, order), retry notice', () => 
   assert.match(P.orchestraRules(), /do only this assignment/);
   assert.strictEqual(P.dependencyContext([]), '');
   const d = P.dependencyContext([{ id: 'a', report: 'x'.repeat(5000) }, { id: 'b', report: 'short' }]);
-  assert.match(d, /### Result of \[a\]\n…x+/);
+  assert.match(d, /### Result of \[a\]\nx+\n…\(truncated\)/);
+  assert.strictEqual(P.dependencyContext(new Map([['m', 'x']])), '---\nResults from earlier steps you depend on:\n### Result of [m]\nx');
   assert.match(d, /### Result of \[b\]\nshort/);
   assert.ok(d.indexOf('[a]') < d.indexOf('[b]'));
   assert.ok(d.length < 2500 + 400);
-  assert.match(P.dependencyContext([{ id: 'a', report: 'x'.repeat(50) }], { limit: 10 }), /…x{9}$/);
+  assert.match(P.dependencyContext([{ id: 'a', report: 'x'.repeat(50) }], { limit: 10 }), /x{10}\n…\(truncated\)$/);
   assert.match(P.retryNotice({ why: 'ran out of steps' }), /previous attempt ran out of steps/);
 });
 

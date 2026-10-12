@@ -4,18 +4,18 @@
 // Saf: dosya sistemi, saat, oturum veya model çağrısı yok; girdi nesneleri değiştirilmez.
 // Katman sırası: [BASE] → [ROLE:x] → [MODE:x] → [DYNAMIC] (kaynak yoksa DYNAMIC hiç eklenmez).
 
-const { LANGS } = require('./i18n');
 const { LIMITS } = require('./limits');
 
 const SUMMARY_TAG = '[Conversation summary]';
 const REMINDER_TAG = '[system reminder]';
 
 const text = (language) => (language === 'tr' ? 'tr' : 'en');
-const langName = (language) => LANGS[language] || 'English';
+const NAMES = { en: 'English', tr: 'Turkish', de: 'German', es: 'Spanish', ja: 'Japanese', zh: 'Chinese', ko: 'Korean', pl: 'Polish' };
+const langName = (language) => NAMES[language] || 'English';
 const join = (parts) => parts.filter(Boolean).join('\n\n');
 const q = (items) => items.map((x) => `"${x.content}" (${x.status})`).join(', ');
-// Başı kırpar, sonu korur (dosya yolları sonda olur): '…' + son n-1 karakter
-const keepTail = (s, n) => { s = String(s); return s.length > n ? `…${s.slice(s.length - n + 1)}` : s; };
+// Limit aşılırsa başı korur, sona …(truncated) ekler (tüm kırpmalarla aynı biçim)
+const clip = (s, n) => { s = String(s); return s.length > n ? `${s.slice(0, n)}\n…(truncated)` : s; };
 
 // ---------- 1) base ----------
 
@@ -27,7 +27,7 @@ function base({ cwd, platform, language } = {}) {
       'Sen SyzerCLI\'sin: kullanıcının terminalinde çalışan genel amaçlı bir kodlama ajanı.',
       `Çalışma dizini: ${cwd}`,
       `Platform: ${platform}. run_command kabuğu: ${shell}.`,
-      `Yanıt dili: ${langName(language)}; kullanıcı başka dilde yazarsa o dile uy. Araç adları, JSON anahtarları, yollar ve kod değişmez.`,
+      `Yanıt dili: Türkçe; kullanıcı başka dilde yazarsa o dile uy. Araç adları, JSON anahtarları, yollar ve kod değişmez.`,
       'Tahmin etmek yerine araçlarla incele ve değiştir. Düzenlemeden önce dosyayı oku. Küçük değişiklikler için edit_file (birden çoğu edits ile), yeni dosyalar için write_file kullan. Kısa yanıt ver, neyi doğruladığını söyle. ' +
         'Güncel bilgi için web_search/web_fetch, sunucu ve uzun komutlar için run_background kullan.',
     ].join('\n');
@@ -53,9 +53,9 @@ const ROLES = {
       'ORCHESTRA (only for 3+ separable pieces): write the todo_write plan FIRST, each item with id, agent, self-contained prompt and depends_on ids (independent items run in parallel; later items get the reports they depend on); optional per-item model. ' +
       'Copy user constraints (read-only, language, scope) into every agent prompt and use read-only agents (explore, plan) for analysis. Never do an agent item yourself: call run_plan, which runs ready items in waves, retries a stalled agent once and marks items completed. ' +
       'The final synthesis is YOURS: add it as a last item WITHOUT an agent.',
-    explore: 'You are an exploration agent. You can only read: list, find, search and read files. Never modify anything. ' +
+    explore: 'You are a read-only exploration agent: you can only list, find, search and read files. Never modify anything. ' +
       'Investigate thoroughly but efficiently, then report concrete findings (file paths, line numbers, short quotes).',
-    plan: 'You are a planning agent. You can only read. Study the relevant code, then return a concise numbered plan listing the exact files to change and the risks. Do not modify anything.',
+    plan: 'You are a read-only planning agent. Study the relevant code, then return a concise numbered plan listing the exact files to change and the risks. Do not modify anything.',
     general: 'You are a worker agent. Complete the assigned task fully using your tools, then give a concise final report: what you did and the result.',
     summary: 'You compress conversations into faithful working summaries. Only compress; do not continue the work. ' +
       'Keep the user\'s goals, decisions, files touched, open TODOs and commands that matter.',
@@ -120,9 +120,10 @@ const planPrefix = (language) => `${PLAN_LINE[text(language)]}\n\n`;
 
 const DEP_TEXT = { en: 'Results from earlier steps you depend on:', tr: 'Bağlı olduğun önceki adımların sonuçları:' };
 
-// results: [{ id, report }] (bağımlılık sırasıyla). Her rapor merkezi limitle kırpılır; boşsa ''.
+// results: [{ id, report }] veya Map(id → report) (bağımlılık sırasıyla). Her rapor merkezi limitle kırpılır; boşsa ''.
 function dependencyContext(results, { limit = LIMITS.dependencyContext, language } = {}) {
-  const parts = (results || []).map((r) => `### Result of [${r.id}]\n${keepTail(r.report, limit)}`);
+  const list = results instanceof Map ? [...results].map(([id, report]) => ({ id, report })) : (results || []);
+  const parts = list.map((r) => `### Result of [${r.id}]\n${clip(r.report, limit)}`);
   return parts.length ? `---\n${DEP_TEXT[text(language)]}\n${parts.join('\n\n')}` : '';
 }
 
@@ -151,7 +152,7 @@ function budgetNotice({ kind, reason }) {
   return `${reason}. Reply to continue (counters reset on your next prompt) or raise the limit with /budget.`;
 }
 
-// Kaynak yoksa '' (katman hiç eklenmez). todo: madde dizisi; dependencies: [{id, report}]; retry: why metni; budget: hazır metin.
+// Kaynak yoksa '' (katman hiç eklenmez). todo: madde dizisi; dependencies: [{id, report}]; retry: why metni veya { why }; budget: hazır metin.
 function dynamic({ skills, instructionFiles, todo, dependencies, retry, budget, language } = {}) {
   const parts = [];
   if (skills && skills.length) {
@@ -161,7 +162,7 @@ function dynamic({ skills, instructionFiles, todo, dependencies, retry, budget, 
   for (const f of instructionFiles || []) parts.push(`--- ${f.path} ---\n${f.text}`);
   if (todo && todo.length) parts.push(todoReminder(todo, { language }));
   if (dependencies && dependencies.length) parts.push(dependencyContext(dependencies, { language }));
-  if (retry) parts.push(retryNotice({ why: retry, language }));
+  if (retry) parts.push(retryNotice({ why: typeof retry === 'object' ? retry.why : retry, language }));
   if (budget) parts.push(String(budget));
   return parts.length ? `[DYNAMIC]\n${parts.join('\n\n')}` : '';
 }
@@ -180,13 +181,11 @@ function leadSystem(input = {}) {
 
 // ctx.header = base katmanı; builtin ajanın prompt'u zaten [ROLE:x] ile başlar
 function subagentSystem({ ctx, agent, language } = {}) {
-  const L = text(language);
   const rolePart = String(agent.prompt || '').startsWith('[ROLE:') ? agent.prompt : `[ROLE:${agent.name}]\n${agent.prompt || ''}`;
-  const hierarchy = L === 'tr'
-    ? 'Bir lider ajan için çalışan alt ajansın. Kullanıcıya soru soramazsın (You cannot ask the user questions). Görevi bitir, sonra kısa bir son rapor ver (bulgular, dosya yolları, sonuçlar). Lider yalnızca bu raporu görür.'
-    : 'You are a subagent working for a lead agent. You cannot ask the user questions. Finish the task, then reply with a concise final report (findings, file paths, results). The lead only sees that report.';
-  const report = LANGS[language]
-    ? `Write your final report in ${LANGS[language]}.`
+  // Hiyerarşi cümlesi anahtar kelimeleriyle İngilizce kalır; yalnızca rapor dili göreve/dile göre değişir
+  const hierarchy = 'You are a subagent working for a lead agent. You cannot ask the user questions. Finish the task, then reply with a concise final report (findings, file paths, results). The lead only sees that report.';
+  const report = NAMES[language]
+    ? `Write your final report in ${NAMES[language]}.`
     : 'Write your final report in the same language as the task.';
   const files = (ctx.files || []).map((f) => `--- ${f.path} ---\n${f.text}`);
   return join([ctx.header, `${rolePart}\n${hierarchy}\n${report}`, ...files]);
