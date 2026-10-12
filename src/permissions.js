@@ -99,12 +99,27 @@ function isOutside(cwd, p, fsImpl = fs) {
   const resolveExisting = (candidate) => {
     const missing = [];
     let current = candidate;
+    let symlinkFollows = 0;
     while (true) {
       try {
         const real = realpath.call(fsImpl, current);
         return path.join(real, ...missing.reverse());
       } catch (err) {
         if (!err || err.code !== 'ENOENT') throw err;
+        // realpath reports ENOENT for a broken link.  Inspect every missing
+        // component so a link to an as-yet missing path cannot escape unnoticed.
+        let stat;
+        try {
+          stat = fsImpl.lstatSync(current);
+        } catch (lstatErr) {
+          if (!lstatErr || lstatErr.code !== 'ENOENT') throw lstatErr;
+        }
+        if (stat && typeof stat.isSymbolicLink === 'function' && stat.isSymbolicLink()) {
+          if (++symlinkFollows > 40) throw new Error('Too many symbolic link resolutions');
+          const linkTarget = fsImpl.readlinkSync(current);
+          current = path.resolve(path.dirname(current), linkTarget);
+          continue;
+        }
         const parent = path.dirname(current);
         if (parent === current) throw err;
         missing.push(path.basename(current));

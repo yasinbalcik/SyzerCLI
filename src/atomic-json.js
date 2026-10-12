@@ -12,12 +12,13 @@ function writeJsonAtomic(file, value, options = {}) {
   const retryDelaysMs = options.retryDelaysMs || [0, 25, 50, 100];
   const sleepSync = options.sleepSync || ((ms) => {
     if (!ms) return;
-    const end = Date.now() + ms;
-    while (Date.now() < end) { /* bounded synchronous retry delay */ }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
   });
 
   // Serialize before creating anything so a circular value cannot leave a temp file.
-  const text = JSON.stringify(value, null, space) + (newline ? '\n' : '');
+  const raw = JSON.stringify(value, null, space);
+  if (raw === undefined) throw new TypeError('The "value" argument could not be serialized to JSON');
+  const text = raw + (newline ? '\n' : '');
   const dir = path.dirname(file);
   fsImpl.mkdirSync(dir, { recursive: true });
   const base = path.basename(file);

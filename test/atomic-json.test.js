@@ -48,3 +48,35 @@ test('atomic JSON: serialization failure does not touch target', () => {
   assert.throws(() => writeJsonAtomic(file, value), TypeError);
   assert.equal(fs.readFileSync(file, 'utf8'), '{"keep":1}');
 });
+
+test('atomic JSON: unserializable root values preserve the existing target', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'syzer-atomic-'));
+  const file = path.join(dir, 'config.json');
+  fs.writeFileSync(file, '{"keep":1}');
+  for (const value of [undefined, () => {}, Symbol('value')]) {
+    assert.throws(() => writeJsonAtomic(file, value), TypeError);
+    assert.equal(fs.readFileSync(file, 'utf8'), '{"keep":1}');
+  }
+});
+
+test('atomic JSON: default retry sleep uses Atomics.wait instead of spinning', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'syzer-atomic-'));
+  const file = path.join(dir, 'config.json');
+  const originalWait = Atomics.wait;
+  const waits = [];
+  let renames = 0;
+  const injected = {
+    ...fs,
+    renameSync(from, to) {
+      if (renames++ === 0) { const err = new Error('busy'); err.code = 'EPERM'; throw err; }
+      return fs.renameSync(from, to);
+    },
+  };
+  Atomics.wait = (...args) => { waits.push(args[3]); return 'timed-out'; };
+  try {
+    writeJsonAtomic(file, { fresh: true }, { fsImpl: injected });
+  } finally {
+    Atomics.wait = originalWait;
+  }
+  assert.deepEqual(waits, [25]);
+});

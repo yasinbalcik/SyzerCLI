@@ -33,3 +33,34 @@ test('permissions: workspace symlink to outside is rejected when privilege allow
   catch (err) { if (err && ['EPERM', 'EACCES'].includes(err.code)) return t.skip('symlink privilege unavailable'); throw err; }
   assert.equal(isOutside(cwd, 'link/new.txt'), true);
 });
+
+test('permissions: broken symlink to a missing outside target is rejected with injected fs', () => {
+  const root = path.parse(process.cwd()).root;
+  const cwd = path.join(root, 'workspace');
+  const link = path.join(cwd, 'link');
+  const enoent = () => { const err = new Error('missing'); err.code = 'ENOENT'; throw err; };
+  const fsImpl = {
+    realpathSync(candidate) {
+      if (candidate === cwd || candidate === root) return candidate;
+      return enoent();
+    },
+    lstatSync(candidate) {
+      if (candidate === link) return { isSymbolicLink: () => true };
+      return enoent();
+    },
+    readlinkSync(candidate) {
+      assert.equal(candidate, link);
+      return path.join(root, 'outside-missing');
+    },
+  };
+  assert.equal(isOutside(cwd, 'link/new.txt', fsImpl), true);
+});
+
+test('permissions: real broken symlink to a missing outside target is rejected when privilege allows it', (t) => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'syzer-perm-'));
+  const outside = path.join(os.tmpdir(), `syzer-missing-${process.pid}-${Date.now()}`);
+  const link = path.join(cwd, 'broken-link');
+  try { fs.symlinkSync(outside, link, 'dir'); }
+  catch (err) { if (err && ['EPERM', 'EACCES'].includes(err.code)) return t.skip('symlink privilege unavailable'); throw err; }
+  assert.equal(isOutside(cwd, 'broken-link/new.txt'), true);
+});

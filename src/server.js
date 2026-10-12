@@ -18,21 +18,23 @@ function parseHostHeader(value) {
   if (typeof value !== 'string' || !value.trim()) return null;
   const h = value.trim();
   if (h.startsWith('[')) {
-    const end = h.indexOf(']');
-    if (end < 0) return null;
-    const hostname = h.slice(1, end).toLowerCase();
-    const rest = h.slice(end + 1);
-    if (!rest.startsWith(':') || !/^:\d+$/.test(rest)) return null;
-    return { hostname, port: Number(rest.slice(1)) };
+    const m = h.match(/^\[([^\]]+)\](?::(\d+))?$/);
+    return m ? { hostname: m[1].toLowerCase(), port: m[2] === undefined ? null : Number(m[2]) } : null;
   }
-  const m = h.match(/^([^:]+):(\d+)$/);
-  if (!m) return null;
-  return { hostname: m[1].toLowerCase(), port: Number(m[2]) };
+  const m = h.match(/^([^:\s]+)(?::(\d+))?$/);
+  return m ? { hostname: m[1].toLowerCase(), port: m[2] === undefined ? null : Number(m[2]) } : null;
 }
 
-function hostAllowed(value, expectedPort) {
+function hostAllowed(value, expectedPort, bindHost = '127.0.0.1') {
   const parsed = parseHostHeader(value);
-  return !!parsed && LOOPBACK_HOSTS.has(parsed.hostname) && parsed.port === Number(expectedPort);
+  const port = Number(expectedPort);
+  if (!parsed || (parsed.port === null ? port !== 80 : parsed.port !== port)) return false;
+  const bound = String(bindHost || '').replace(/^\[|\]$/g, '').toLowerCase();
+  if (isLoopbackBind(bound)) return LOOPBACK_HOSTS.has(parsed.hostname);
+  // Wildcard binds require a token at startup, so any correctly-port-matched
+  // Host is accepted for LAN/container clients that address this machine by name.
+  if (bound === '0.0.0.0' || bound === '::') return true;
+  return parsed.hostname === bound;
 }
 
 const readBody = (req) => new Promise((resolve, reject) => {
@@ -82,7 +84,7 @@ function start({ port = 8787, host = '127.0.0.1', token = null, corsOrigins = []
   const server = http.createServer(async (req, res) => {
     const started = Date.now();
     const url = new URL(req.url, 'http://x');
-    if (!hostAllowed(req.headers.host, expectedPort || (server.address() && server.address().port))) {
+    if (!hostAllowed(req.headers.host, expectedPort || (server.address() && server.address().port), host)) {
       return oaError(res, 400, 'Invalid Host header.');
     }
 
@@ -92,6 +94,11 @@ function start({ port = 8787, host = '127.0.0.1', token = null, corsOrigins = []
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
       res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-API-Key');
+      if (req.method === 'OPTIONS') {
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Max-Age', '600');
+        return res.writeHead(204).end();
+      }
     }
 
     if (token) {
