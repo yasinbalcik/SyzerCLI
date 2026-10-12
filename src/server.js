@@ -11,6 +11,30 @@ const { fetchInfo } = require('./cmds');
 const { C } = require('./ui');
 const { t, setLang } = require('./i18n');
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+const isLoopbackBind = (host) => LOOPBACK_HOSTS.has(String(host || '').replace(/^\[|\]$/g, '').toLowerCase());
+
+function parseHostHeader(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const h = value.trim();
+  if (h.startsWith('[')) {
+    const end = h.indexOf(']');
+    if (end < 0) return null;
+    const hostname = h.slice(1, end).toLowerCase();
+    const rest = h.slice(end + 1);
+    if (!rest.startsWith(':') || !/^:\d+$/.test(rest)) return null;
+    return { hostname, port: Number(rest.slice(1)) };
+  }
+  const m = h.match(/^([^:]+):(\d+)$/);
+  if (!m) return null;
+  return { hostname: m[1].toLowerCase(), port: Number(m[2]) };
+}
+
+function hostAllowed(value, expectedPort) {
+  const parsed = parseHostHeader(value);
+  return !!parsed && LOOPBACK_HOSTS.has(parsed.hostname) && parsed.port === Number(expectedPort);
+}
+
 const readBody = (req) => new Promise((resolve, reject) => {
   let data = '';
   req.on('data', (c) => { data += c; if (data.length > 50 * 1024 * 1024) req.destroy(); });
@@ -47,22 +71,34 @@ async function upstream(cfg, body, signal, log) {
   );
 }
 
-function start({ port = 8787, host = '127.0.0.1', token = null } = {}) {
+function start({ port = 8787, host = '127.0.0.1', token = null, corsOrigins = [] } = {}) {
+  if (!isLoopbackBind(host) && !token) throw new Error('A token is required for non-loopback proxy binds.');
   const cfg = config.load();
   setLang(cfg.lang);
   const log = (s) => console.log(s);
+  const origins = new Set(Array.isArray(corsOrigins) ? corsOrigins : []);
+  let expectedPort = Number(port);
 
   const server = http.createServer(async (req, res) => {
     const started = Date.now();
     const url = new URL(req.url, 'http://x');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+    if (!hostAllowed(req.headers.host, expectedPort || (server.address() && server.address().port))) {
+      return oaError(res, 400, 'Invalid Host header.');
+    }
+
+    const origin = req.headers.origin;
+    if (origin !== undefined) {
+      if (!origins.has(origin)) return oaError(res, 403, 'Origin not allowed.');
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-API-Key');
+    }
 
     if (token) {
       const given = (req.headers.authorization || '').replace(/^Bearer\s+/i, '') || req.headers['x-api-key'];
       if (given !== token) return oaError(res, 401, 'Invalid proxy token.');
     }
+    if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
 
     try {
       if (url.pathname === '/health') return json(res, 200, { ok: true, keys: cfg.keys.length, model: cfg.model });
@@ -141,13 +177,14 @@ function start({ port = 8787, host = '127.0.0.1', token = null } = {}) {
   });
 
   server.listen(port, host, () => {
+    expectedPort = server.address().port;
     const base = `http://${host}:${port}/v1`;
     log(`${C.orange('◆')} ${C.bold('SyzerCLI proxy')} ${C.cyan(providers.current().name)}  ${C.gray(t('serve_started', base))}`);
     log(C.gray(`  ${cfg.keys.length} key · default model: ${cfg.model}${token ? ' · token required' : ''}`));
-    log(C.gray(`  OPENAI_BASE_URL=${base}  OPENAI_API_KEY=${token || 'anything'}  model="default"`));
+    log(C.gray(`  OPENAI_BASE_URL=${base}  OPENAI_API_KEY=${token ? 'required' : 'anything'}  model="default"`));
   });
   server.on('error', (e) => { console.error(`${C.red('✖')} ${e.message}`); process.exitCode = 1; });
   return server;
 }
 
-module.exports = { start };
+module.exports = { start, parseHostHeader, hostAllowed };

@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
 const { globToRegex } = require('./glob');
 
 // Kendi araç adlarımız ↔ Claude tarzı kural adları
@@ -88,9 +89,39 @@ function suggestRule(name, input) {
   return CLAUDE_NAME[name] || name;
 }
 
-function isOutside(cwd, p) {
-  const rel = path.relative(cwd, path.resolve(cwd, p || '.'));
-  return rel.startsWith('..') || path.isAbsolute(rel);
+function isOutside(cwd, p, fsImpl = fs) {
+  if (fsImpl && fsImpl.fsImpl) fsImpl = fsImpl.fsImpl;
+  const realpath = fsImpl.realpathSync && (fsImpl.realpathSync.native || fsImpl.realpathSync);
+  if (typeof realpath !== 'function') return true;
+  const workspaceAbs = path.resolve(cwd);
+  const targetAbs = path.resolve(workspaceAbs, p || '.');
+
+  const resolveExisting = (candidate) => {
+    const missing = [];
+    let current = candidate;
+    while (true) {
+      try {
+        const real = realpath.call(fsImpl, current);
+        return path.join(real, ...missing.reverse());
+      } catch (err) {
+        if (!err || err.code !== 'ENOENT') throw err;
+        const parent = path.dirname(current);
+        if (parent === current) throw err;
+        missing.push(path.basename(current));
+        current = parent;
+      }
+    }
+  };
+
+  try {
+    const realWorkspace = resolveExisting(workspaceAbs);
+    const realTarget = resolveExisting(targetAbs);
+    const rel = path.relative(realWorkspace, realTarget);
+    return rel.startsWith('..') || path.isAbsolute(rel);
+  } catch {
+    // Any inability to establish the real path is the safe (outside) answer.
+    return true;
+  }
 }
 
 module.exports = { CLAUDE_NAME, dangerous, decide, suggestRule, parseRule, isOutside };

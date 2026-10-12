@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const config = require('./config');
+const { writeJsonAtomic } = require('./atomic-json');
 
 const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 
@@ -64,8 +65,7 @@ function writeRule(cwd, kind, rule) {
   j.permissions ||= {};
   const list = (j.permissions[kind] ||= []);
   if (!list.includes(rule)) list.push(rule);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(j, null, 2));
+  writeJsonAtomic(file, j, { space: 2, mode: 0o600 });
   return file;
 }
 
@@ -75,7 +75,7 @@ function removeRule(cwd, kind, rule) {
   if (!j || !j.permissions || !j.permissions[kind]) return false;
   const before = j.permissions[kind].length;
   j.permissions[kind] = j.permissions[kind].filter((r) => r !== rule);
-  fs.writeFileSync(file, JSON.stringify(j, null, 2));
+  writeJsonAtomic(file, j, { space: 2, mode: 0o600 });
   return j.permissions[kind].length < before;
 }
 

@@ -452,12 +452,15 @@ async function runTool(name, a, call, session, allowedByRule) {
     if (MUTATING.has(name) || isMcp) {
       if (session.plan) return P.failure('TOOL_FAILED', t('plan_block'));
       if (session.perm === 'readonly') return P.failure('TOOL_FAILED', t('readonly_block'));
+      const outside = FILE_WRITE.has(name) && perms.isOutside(cwd, a.path);
+      if (outside && session.perm === 'auto' && session.canAsk === false) {
+        return P.failure('E_OUTSIDE_WORKSPACE', 'path is outside the workspace');
+      }
       if (FILE_WRITE.has(name)) {
         change = prepareChange(name, a, abs);
         if (change.err) return P.failure(change.err.code, change.err.detail, change.err.hint);
         ops = diffLines(change.before, change.after);
       }
-      const outside = FILE_WRITE.has(name) && perms.isOutside(cwd, a.path);
       const needAsk = !allowedByRule && (session.perm === 'ask' || (session.perm === 'auto' && outside && session.canAsk));
       if (needAsk) {
         let preview = '';

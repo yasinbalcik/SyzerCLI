@@ -3,6 +3,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { writeJsonAtomic } = require('./atomic-json');
 
 const DIR = process.env.SYZER_HOME || path.join(os.homedir(), '.syzercli');
 const OLD_DIR = path.join(os.homedir(), '.openrouter-cli'); // eski sürümden otomatik taşınır
@@ -27,8 +28,7 @@ const PER_PROVIDER = ['model', 'effort', 'fallback', 'subagentModel', 'routing']
 
 const readJson = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 const writeJson = (p, obj) => {
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(obj, null, 2), { mode: 0o600 });
+  writeJsonAtomic(p, obj, { space: 2, mode: 0o600 });
 };
 
 // Eski ~/.openrouter-cli klasörünü yeni konuma kopyalar (bir kez)
