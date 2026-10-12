@@ -86,4 +86,13 @@ function status() {
   try { return JSON.parse(r.stdout); } catch { return { found: true, error: (r.stderr || r.stdout || 'unreadable status').trim().slice(0, 200) }; }
 }
 
-module.exports = { run, status, ensure, installed, installedVersion, cliCmd, PLUGIN_REPO };
+// syzer doctor için: `syzer-orca doctor --json` (çıkış 0 = tüm gruplar uygulandı, 2 = bazıları atlandı). null = kurulu değil.
+// Zaman aşımı/okunamayan çıktı: { error }. spawn: test için enjekte edilebilir.
+function doctorJson({ timeout = 5000, spawn = spawnSync } = {}) {
+  if (!installed()) return null;
+  const r = spawn(nodeBin(), [entry(), 'doctor', '--json'], { encoding: 'utf8', timeout, env: { ...process.env, SYZER_CLI_CMD: cliCmd() } });
+  if (r.error) return { error: r.error.code === 'ETIMEDOUT' ? `timeout (${timeout} ms)` : r.error.message };
+  try { return { ...JSON.parse(r.stdout), exitCode: r.status }; } catch { return { error: (r.stderr || r.stdout || 'unreadable doctor output').trim().slice(0, 200) }; }
+}
+
+module.exports = { run, status, doctorJson, latest, ensure, installed, installedVersion, cliCmd, PLUGIN_REPO };

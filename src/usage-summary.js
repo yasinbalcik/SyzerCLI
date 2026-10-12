@@ -31,7 +31,8 @@ async function summary(only) {
   const out = [];
   for (const p of providers.list()) {
     if (only && p.id !== only) continue;
-    const keys = config.loadKeys(p.id).keys;
+    const store = config.loadKeys(p.id);
+    const keys = store.keys;
     if (!keys.length) continue;
     providers.setCurrent(p.id);
     const ready = keys.filter(usable).length;
@@ -44,7 +45,7 @@ async function summary(only) {
     }
     // Kota bilinmiyorsa (NVIDIA) yüzde, hazır olmayan key oranından türetilir
     const percentUsed = info.percent_used != null ? info.percent_used : pct(keys.length - ready, keys.length);
-    out.push({ provider: p.id, name: p.name, percent_used: percentUsed, percent_remaining: percentUsed == null ? null : 100 - percentUsed, basis: info.basis || 'keys_ready', used: info.used, limit: info.limit, keys_ready: ready, keys_total: keys.length, resets_at: info.resets_at });
+    out.push({ provider: p.id, name: p.name, percent_used: percentUsed, percent_remaining: percentUsed == null ? null : 100 - percentUsed, basis: info.basis || 'keys_ready', used: info.used, limit: info.limit, keys_ready: ready, keys_total: keys.length, active_key: Math.min(store.active | 0, keys.length - 1) + 1, resets_at: info.resets_at });
   }
   const tot = out.reduce((a, r) => ({ ready: a.ready + r.keys_ready, total: a.total + r.keys_total }), { ready: 0, total: 0 });
   const withPct = out.filter((r) => r.percent_used != null);

@@ -24,6 +24,7 @@ const HELP = `SyzerCLI v${pkg.version}
   syzer provider [openrouter|nvidia]  switch provider (each has its own key file)
   syzer key add [keys|--file f]  add many keys at once; provider is detected from the key format
   syzer key list | use <n> | remove <n> | reset | test | prune  (test/prune print JSON; --provider p)
+  syzer key stats [--json]    recent outcomes, failure rate and cool-down per key (smart rotation)
   syzer usage [--json] [--check]  per-key status (OpenRouter: free requests/credit; NVIDIA: local counts, --check verifies live)
   syzer models [text] [--check] [--all]  list models (NVIDIA: --check finds which work on your account)
   syzer model [set <id>]      show / set the default model
@@ -40,7 +41,7 @@ const HELP = `SyzerCLI v${pkg.version}
   syzer web [--port 8788] [--no-open]  local web UI (chat, keys, usage, settings)
   syzer orca [status|install [--shortcut]|patch|restore|uninstall]  Orca integration (auto-maintained)
   syzer setup                 run the first-time setup wizard again
-  syzer doctor                check install, keys, network and Orca patch
+  syzer doctor [--online]     check install, key pool, network and Orca patch (--online: also latest plugin release)
   syzer export <id|last> [--out f.md]  save a session as Markdown
   syzer update                check GitHub for a newer version (the syzer.exe launcher installs it)
   syzer usage --summary --json  percent used per provider (for status bars / Orca)
@@ -69,6 +70,7 @@ function parseArgs(argv) {
     else if (a === '--summary') f.summary = true;
     else if (a === '--no-update') f.noUpdate = true;
     else if (a === '--all') f.all = true;
+    else if (a === '--online') f.online = true;
     else if (a === '--provider') f.provider = argv[++i];
     else if (a === '-e' || a === '--effort') f.effort = argv[++i];
     else if (a === '-a' || a === '--agent') f.agent = argv[++i];
@@ -157,6 +159,11 @@ async function main() {
 
   const [cmd, sub, ...more] = f.rest;
 
+  if ((cmd === 'key' || cmd === 'keys') && sub === 'stats') {
+    const kj = require('../src/keys-json');
+    const r = kj.stats(f.provider);
+    return console.log(f.json ? JSON.stringify(r) : kj.statsText(r));
+  }
   if ((cmd === 'key' || cmd === 'keys') && (f.json || sub === 'test' || sub === 'prune')) { // makine okunur çıktı (Orca vb.)
     const kj = require('../src/keys-json');
     const out = (o) => console.log(JSON.stringify(o));
@@ -184,7 +191,7 @@ async function main() {
   }
   if (cmd === 'provider') return cmds.providerCmd(cfg, sub);
   if (cmd === 'orca') return require('../src/orca-bridge').run(process.argv.slice(process.argv.indexOf('orca') + 1)); // eklenti: github.com/yasinbalcik/SyzerCLI-Orca
-  if (cmd === 'doctor') return require('../src/doctor').run(cfg);
+  if (cmd === 'doctor') return require('../src/doctor').run(cfg, { online: f.online });
   if (cmd === 'export') return require('../src/export').run(sub, f.outFile);
   if (cmd === 'web') return require('../src/web').start(cfg, { port: Number(f.port) || 8788, open: !f.noOpen });
   if (cmd === 'setup') return require('../src/setup').run(cfg);

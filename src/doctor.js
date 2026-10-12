@@ -11,7 +11,40 @@ async function reach(url) {
   try { const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(6000) }); return r.status < 500 ? { ok: true, detail: `HTTP ${r.status}` } : { ok: false, detail: `HTTP ${r.status}` }; } catch (e) { return { ok: false, detail: e.message }; }
 }
 
-async function run(cfg) {
+// Key havuzu: sağlayıcı başına hazır/toplam, soğumadaki sayısı, en kötü hata oranı. stats = keys-json.stats çıktısı.
+function keyPoolRows(stats) {
+  return stats.providers.filter((p) => p.keys.length).map((p) => {
+    const cool = p.keys.filter((k) => k.cooldownSec > 0).length;
+    const ready = p.keys.filter((k) => k.state === 'ready' && !k.cooldownSec).length;
+    const worst = Math.max(0, ...p.keys.map((k) => k.failRate));
+    const level = ready === 0 || cool || worst >= 0.5 ? 'warn' : 'ok';
+    return { level, name: `${p.id} havuz`, detail: `${ready}/${p.keys.length} hazır, ${cool} soğumada, en kötü hata oranı %${Math.round(worst * 100)}` };
+  });
+}
+
+// `syzer-orca doctor --json` çıktısı → satırlar. Şekil toleranslı: groups dizi ya da { ad: {...} } olabilir.
+function orcaDoctorRows(d, { version, latest, cmpVer } = {}) {
+  const rows = [];
+  if (version) {
+    const newer = latest && cmpVer && cmpVer(latest, version) > 0;
+    rows.push({ level: newer ? 'warn' : 'ok', name: 'Orca eklenti sürümü', detail: `v${version}${latest ? ` (son sürüm v${latest}${newer ? ': "syzer orca update"' : ''})` : ''}` });
+  }
+  if (!d) return rows;
+  if (d.error) { rows.push({ level: 'warn', name: 'Orca doctor', detail: d.error }); return rows; }
+  const raw = d.groups || d.results || {};
+  const list = Array.isArray(raw) ? raw : Object.entries(raw).map(([k, v]) => (v && typeof v === 'object' ? { id: k, ...v } : { id: k, applied: v === true || v === 'applied' }));
+  for (const g of list) {
+    const name = String(g.id || g.name || g.group || '?');
+    const st = String(g.status || '');
+    const applied = g.applied === true || st === 'applied' || st === 'ok';
+    const why = g.reason || g.why || (Array.isArray(g.reasons) ? g.reasons.join('; ') : g.reasons) || g.error || '';
+    rows.push({ level: applied ? 'ok' : 'warn', name: `Orca grup ${name}`, detail: applied ? 'uygulandı' : `atlandı${why ? `: ${why}` : ''}` });
+  }
+  if (!list.length && d.exitCode === 2) rows.push({ level: 'warn', name: 'Orca doctor', detail: 'bazı gruplar atlandı' });
+  return rows;
+}
+
+async function run(cfg, { online = false } = {}) {
   const rows = [];
   const add = (level, name, detail) => rows.push({ level, name, detail });
 
@@ -26,6 +59,7 @@ async function run(cfg) {
     add(valid.length ? 'ok' : (p === (cfg && cfg.provider) ? 'fail' : 'warn'), `${p} key`, `${keys.length} kayıtlı, ${valid.length} biçimi geçerli`);
   }
   add('ok', 'Etkin sağlayıcı', String(cfg && cfg.provider));
+  try { for (const r of keyPoolRows(require('./keys-json').stats())) rows.push(r); } catch (e) { add('warn', 'Key havuzu', e.message); }
 
   const net = await Promise.all([['OpenRouter', 'https://openrouter.ai/api/v1/models'], ['NVIDIA', 'https://integrate.api.nvidia.com/v1/models'], ['GitHub', 'https://api.github.com']].map(async ([n, u]) => [n, await reach(u)]));
   for (const [n, r] of net) add(r.ok ? 'ok' : 'warn', `Ağ: ${n}`, r.detail);
@@ -41,6 +75,11 @@ async function run(cfg) {
         add(o.upToDate ? 'ok' : 'warn', 'Orca yaması', `Orca ${o.orcaVersion}, eklenti v${bridge.installedVersion()}: ${o.patched ? (o.upToDate ? 'güncel' : 'eski sürüm, Orca kapalıyken "syzer orca patch" ya da masaüstü kısayolu') : 'uygulanmamış ("syzer orca install --shortcut")'}`);
         if (o.skippedGroups && o.skippedGroups.length) add('warn', 'Orca atlanan gruplar', o.skippedGroups.join(' | '));
       }
+      if (o && !o.error) {
+        let latest = null;
+        if (online) { try { latest = (await bridge.latest()).version; } catch (e) { add('warn', 'Orca son sürüm', e.message); } }
+        for (const r of orcaDoctorRows(bridge.doctorJson({ timeout: 5000 }), { version: bridge.installedVersion(), latest, cmpVer: require('./updater').cmpVer })) rows.push(r);
+      }
     } catch (e) { add('warn', 'Orca', e.message); }
   }
 
@@ -52,4 +91,4 @@ async function run(cfg) {
   return rows;
 }
 
-module.exports = { run };
+module.exports = { run, keyPoolRows, orcaDoctorRows };

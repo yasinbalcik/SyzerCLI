@@ -4,6 +4,7 @@ const config = require('./config');
 const { KeyError, validateKey } = require('./api');
 const providers = require('./providers');
 const { t } = require('./i18n');
+const health = require('./key-health');
 
 const mask = (k) => (k.length > 14 ? `${k.slice(0, 10)}…${k.slice(-4)}` : '***');
 
@@ -84,14 +85,19 @@ const sleep = (ms, signal) => new Promise((resolve, reject) => {
 function ordered(cfg, spread) {
   const n = cfg.keys.length;
   const a = Math.min(Math.max(cfg.active | 0, 0), n - 1);
-  const list = Array.from({ length: n }, (_, i) => cfg.keys[(a + i) % n]);
+  let list = Array.from({ length: n }, (_, i) => cfg.keys[(a + i) % n]);
+  // Sağlık istatistiği varsa: soğuyanlar sona, düşük hata oranlı key önce (yoksa eski sıra)
+  try { if (cfg.provider) list = health.rank(cfg.provider, list, mask); } catch { /* eski sıra */ }
   // Paralel alt ajanlar: işleri kullanılabilir key'lere dağıt (dakika limitine takılmamak için)
   if (spread != null) {
-    const ok = list.filter(usable);
+    const ok = list.filter((e) => usable(e) && !cooling(cfg, e));
     if (ok.length > 1) { const first = ok[spread % ok.length]; return [first, ...list.filter((e) => e !== first)]; }
   }
   return list;
 }
+
+const cooling = (cfg, e) => { try { return !!cfg.provider && health.isCooling(cfg.provider, mask(e.key)); } catch { return false; } };
+const record = (cfg, e, o) => { try { if (o && cfg.provider) health.recordOutcome(cfg.provider, mask(e.key), o); } catch { /* yut */ } };
 
 async function withRotation(cfg, fn, { onSwitch, onRetry, signal, spread = null } = {}) {
   if (!cfg.keys.length) throw new Error(t('no_keys'));
@@ -107,8 +113,9 @@ async function withRotation(cfg, fn, { onSwitch, onRetry, signal, spread = null 
     try {
       let result;
       for (let attempt = 0; ; attempt++) {
-        try { result = await fn(entry); break; }
+        try { result = await fn(entry); record(cfg, entry, 'ok'); break; }
         catch (err) {
+          if (err instanceof KeyError && !(err.status >= 500 && attempt < 2)) record(cfg, entry, health.classify(err.status, err.message));
           if (err instanceof KeyError && err.status >= 500 && attempt < 2) {
             const delay = 2 * (attempt + 1);
             onRetry && onRetry(err.status, delay);

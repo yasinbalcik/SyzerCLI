@@ -92,4 +92,31 @@ function prune(provider) {
   return { ok: true, removed, providers: out };
 }
 
-module.exports = { listAll, add, remove, use, test, prune, stateOf };
+// Key sağlık istatistikleri (key-health.json): son 20 sonuç, hata oranı, soğuma süresi. health: test için enjekte edilebilir.
+function stats(provider, health = require('./key-health')) {
+  return {
+    providers: ids(provider).map((id) => ({
+      id,
+      keys: config.loadKeys(id).keys.map((e, i) => {
+        const fp = mask(e.key), s = health.stats(id, fp);
+        return { index: i + 1, key: fp, state: stateOf(e), samples: s.samples, counts: s.counts, failRate: Math.round(s.rate * 100) / 100,
+          cooldownSec: Math.ceil(s.coolLeft / 1000), streak: s.streak, last: s.last };
+      }),
+    })),
+  };
+}
+
+function statsText(r) {
+  const lines = [];
+  for (const p of r.providers) {
+    lines.push(`${p.id}`);
+    if (!p.keys.length) lines.push('  (no keys)');
+    for (const k of p.keys) {
+      const c = Object.entries(k.counts).map(([o, n]) => `${o}:${n}`).join(' ') || '-';
+      lines.push(`  #${k.index} ${k.key}  ${k.state}  n=${k.samples}  fail=${Math.round(k.failRate * 100)}%  cooldown=${k.cooldownSec ? `${k.cooldownSec}s` : '-'}  [${c}]`);
+    }
+  }
+  return lines.join('\n');
+}
+
+module.exports = { listAll, add, remove, use, test, prune, stats, statsText, stateOf };
