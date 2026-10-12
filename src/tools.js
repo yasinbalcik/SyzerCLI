@@ -18,7 +18,7 @@ const { LIMITS } = require('./limits');
 const MAX_OUT = LIMITS.toolOutput;
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.venv']);
 
-const clip = (s) => (s.length > MAX_OUT ? s.slice(0, MAX_OUT) + `\n…(truncated ${s.length - MAX_OUT} chars)` : s);
+const clip = (s) => (s.length > MAX_OUT ? s.slice(0, MAX_OUT) + '\n…(truncated)' : s);
 
 const fn = (name, description, properties, required = []) => ({
   type: 'function',
@@ -194,7 +194,7 @@ async function webFetch(url, maxChars) {
   const type = res.headers.get('content-type') || '';
   const body = await res.text();
   const text = /html/i.test(type) ? htmlToText(body) : body;
-  const out = text.length > maxChars ? text.slice(0, maxChars) + `\n…(truncated ${text.length - maxChars} chars)` : text;
+  const out = text.length > maxChars ? text.slice(0, maxChars) + '\n…(truncated)' : text;
   return `HTTP ${res.status} ${url}\n\n${out}`;
 }
 
@@ -488,7 +488,7 @@ async function runTool(name, a, call, session, allowedByRule) {
     if (isMcp) {
       if (!session.mcp) return P.failure('TOOL_FAILED', 'MCP is not available');
       const r = await session.mcp.call(name, a);
-      return { ok: r.ok, output: r.ok ? clip(r.text) : `${P.error('TOOL_FAILED', 'MCP tool reported an error')}\n${clip(r.text)}`, ui: { summary: r.text.split('\n')[0].slice(0, 80) || 'ok' } };
+      return { ok: r.ok, output: r.ok ? clip(r.text) : P.error('TOOL_FAILED', r.text || 'MCP tool reported an error'), ui: { summary: String(r.text || '').split('\n')[0].slice(0, 80) || 'ok' } };
     }
 
     switch (name) {
@@ -546,7 +546,7 @@ async function runTool(name, a, call, session, allowedByRule) {
         const lines = out.trim().split('\n').filter((l, i, all) => l.trim() || (i > 0 && i < all.length - 1));
         const shown = lines.slice(0, 8).map((l) => C.gray('    ' + l.slice(0, 160)));
         if (lines.length > 8) shown.push(C.gray('    ' + t('sum_lines', lines.length - 8)));
-        return { ok: code === 0, output: code === 0 ? clip(`${out.trim()}\n[exit ${code}]`) : `${P.error('TOOL_FAILED', `command exited with code ${code}`)}\n${clip(`${out.trim()}\n[exit ${code}]`)}`, ui: { summary: `exit ${code}`, body: shown.join('\n') } };
+        return { ok: code === 0, output: code === 0 ? clip(`${out.trim()}\n[exit ${code}]`) : P.error('TOOL_FAILED', `command exited with code ${code}${out.trim() ? `: ${out.trim()}` : ''}`), ui: { summary: `exit ${code}`, body: shown.join('\n') } };
       }
       case 'run_background': {
         const e = startBackground(session, a.command);

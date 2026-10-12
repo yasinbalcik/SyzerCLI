@@ -96,10 +96,10 @@ test('planPrefix keeps the legacy [PLAN MODE] first line + blank line', () => {
 test('subagentSystem: base, role, hierarchy, no questions, report language, file order', () => {
   const ctx = { header: P.base({ cwd: '/w', platform: 'linux', language: 'en' }), files: [{ path: 'A.md', text: 'aaa' }, { path: 'B.md', text: 'bbb' }] };
   const s = P.subagentSystem({ ctx, agent: { name: 'explore', builtin: true, prompt: P.role({ name: 'explore' }) }, language: 'tr' });
-  assert.ok(sorted(ids(s, ['[BASE]', '[ROLE:explore]', 'subagent working for a lead agent', '--- A.md ---', '--- B.md ---'])));
-  assert.match(s, /cannot ask the user questions/);
+  assert.ok(sorted(ids(s, ['[BASE]', '[ROLE:explore]', 'alt ajan', '--- A.md ---', '--- B.md ---'])));
+  assert.match(s, /kullanıcıya soru soramaz/i);
   assert.match(P.subagentSystem({ ctx, agent: { name: 'x', prompt: 'p' }, language: 'en' }), /subagent working for a lead agent. You cannot ask the user/);
-  assert.match(s, /Write your final report in Turkish/);
+  assert.match(s, /Son raporunu Türkçe yaz/);
   const custom = P.subagentSystem({ ctx, agent: { name: 'mine', prompt: 'Do X.' } });
   assert.match(custom, /\[ROLE:mine\]\nDo X\./);
   assert.match(custom, /same language as the task/);

@@ -9,10 +9,18 @@ const crypto = require('crypto');
 const { execFile, spawnSync } = require('child_process');
 const config = require('./config');
 const { usable } = require('./keys');
+const P = require('./prompts');
+const { LIMITS } = require('./limits');
 
 const available = () => !!process.env.ORCA_PANE_KEY && !process.env.SYZER_NO_WORKERS;
 const MAX_ATTEMPTS = 2;
 let keyCounter = 0;
+
+const clipWorkerReport = (report) => {
+  const text = String(report);
+  return text.length > LIMITS.subagentReport ? `${text.slice(0, LIMITS.subagentReport)}\n…(truncated)` : text;
+};
+const workerFailure = (detail, hint) => P.error('TOOL_FAILED', detail, hint);
 
 const orcaCli = () => process.env.ORCA_CLI_COMMAND || (process.platform === 'win32' ? 'orca.exe' : 'orca');
 
@@ -67,8 +75,8 @@ async function runOnce(parent, a, id, attempt, signal) {
 
 async function spawnWorker(parent, call, signal) {
   let a;
-  try { a = JSON.parse(call.arguments || '{}'); } catch { return { ok: false, output: 'Invalid JSON arguments.' }; }
-  if (!a.prompt) return { ok: false, output: 'prompt is required.' };
+  try { a = JSON.parse(call.arguments || '{}'); } catch { return P.failure('INVALID_JSON', 'tool arguments are not valid JSON', 'Retry with an object.'); }
+  if (!a.prompt) return P.failure('MISSING_PROMPT', 'prompt is required', 'Provide a complete task.');
   const id = crypto.randomBytes(4).toString('hex');
   fs.mkdirSync(path.join(config.DIR, 'workers', id), { recursive: true });
   fs.writeFileSync(path.join(config.DIR, 'workers', id, 'prompt.txt'), a.prompt);
@@ -89,7 +97,7 @@ async function spawnWorker(parent, call, signal) {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       try {
         report = await runOnce(parent, a, id, attempt, signal);
-        if (!/^ERROR:/.test(report)) { lastErr = ''; break; }
+        if (!/^ERR_|^ERROR:/.test(report)) { lastErr = ''; break; }
         lastErr = report; // işçi kendi hatasını yazdı → farklı key ile bir kez daha dene
       } catch (err) {
         if (err.name === 'AbortError') throw err;
@@ -103,7 +111,7 @@ async function spawnWorker(parent, call, signal) {
       Object.assign(run, { report: lastErr, ok: false, secs });
       return {
         ok: false,
-        output: `WORKER FAILED after ${MAX_ATTEMPTS} attempts: ${lastErr}\nDo NOT silently do this work yourself. Tell the user this worker failed and why.`,
+        output: workerFailure(`worker failed after ${MAX_ATTEMPTS} attempts: ${lastErr}`),
         ui: { summary: `${title}: BAŞARISIZ (${secs}s)` },
       };
     }
@@ -111,13 +119,13 @@ async function spawnWorker(parent, call, signal) {
     const lines = report.split('\n').filter((l) => l.trim());
     return {
       ok: true,
-      output: report.length > 8000 ? `${report.slice(0, 8000)}\n…(truncated)` : report,
+      output: clipWorkerReport(report),
       ui: { summary: `${title} · ${secs}s · terminal sekmesinde izlenebilir`, body: lines.slice(0, 5).map((l) => `    ${l.slice(0, 110)}`).join('\n') },
     };
   } catch (err) {
     if (err.name === 'AbortError') { run.aborted = true; throw err; }
     run.report = `failed: ${err.message}`;
-    return { ok: false, output: `WORKER FAILED: ${err.message}\nDo NOT silently do this work yourself; report the failure to the user.`, ui: { summary: `${title}: ${err.message}` } };
+    return { ok: false, output: workerFailure(`worker failed: ${err.message}`), ui: { summary: `${title}: ${err.message}` } };
   } finally {
     run.secs = run.secs || ((Date.now() - t0) / 1000).toFixed(1);
     hooks.subagentStop({ id: `syz-w-${id}` });
@@ -125,4 +133,4 @@ async function spawnWorker(parent, call, signal) {
   }
 }
 
-module.exports = { available, spawnWorker };
+module.exports = { available, spawnWorker, clipWorkerReport, workerFailure };

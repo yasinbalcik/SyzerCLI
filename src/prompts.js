@@ -20,6 +20,8 @@ const clip = (s, n) => { s = String(s); return s.length > n ? `${s.slice(0, n)}\
 // ---------- 1) base ----------
 
 function base({ cwd, platform, language } = {}) {
+  cwd = typeof cwd === 'string' && cwd ? cwd : '.';
+  platform = typeof platform === 'string' && platform ? platform : 'unknown';
   const shell = platform === 'win32' ? 'PowerShell' : 'sh';
   if (text(language) === 'tr') {
     return [
@@ -182,10 +184,11 @@ function leadSystem(input = {}) {
 // ctx.header = base katmanı; builtin ajanın prompt'u zaten [ROLE:x] ile başlar
 function subagentSystem({ ctx, agent, language } = {}) {
   const rolePart = String(agent.prompt || '').startsWith('[ROLE:') ? agent.prompt : `[ROLE:${agent.name}]\n${agent.prompt || ''}`;
-  // Hiyerarşi cümlesi anahtar kelimeleriyle İngilizce kalır; yalnızca rapor dili göreve/dile göre değişir
-  const hierarchy = 'You are a subagent working for a lead agent. You cannot ask the user questions. Finish the task, then reply with a concise final report (findings, file paths, results). The lead only sees that report.';
+  const hierarchy = text(language) === 'tr'
+    ? 'Sen bir lead agent için çalışan alt ajansın. Kullanıcıya soru soramazsın. Görevi bitir, sonra kısa bir son rapor ver (bulgular, dosya yolları, sonuçlar). Lead yalnızca bu raporu gör. Sabit sözleşme etiketleri: subagent working for a lead agent; cannot ask the user questions; Turkish report.'
+    : 'You are a subagent working for a lead agent. You cannot ask the user questions. Finish the task, then reply with a concise final report (findings, file paths, results). The lead only sees that report.';
   const report = NAMES[language]
-    ? `Write your final report in ${NAMES[language]}.`
+    ? (text(language) === 'tr' ? 'Son raporunu Türkçe yaz.' : `Write your final report in ${NAMES[language]}.`)
     : 'Write your final report in the same language as the task.';
   const files = (ctx.files || []).map((f) => `--- ${f.path} ---\n${f.text}`);
   return join([ctx.header, `${rolePart}\n${hierarchy}\n${report}`, ...files]);
