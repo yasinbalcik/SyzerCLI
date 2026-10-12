@@ -299,7 +299,8 @@ test('setAgents flip: 0 agents -> panel grows to need() and draw fills h lines',
   d.cursorPos = async () => ({ row: 5, col: 1 });
   d.editor.mode = 'line';
   d.setAgents(nodes.map((x) => ({ id: x.id, no: x.id, kind: x.kind, label: 'l', t0: Date.now(), steps: 0, tokens: 0 })));
-  await new Promise((res) => setTimeout(res, 20));
+  // sabit 20 ms yavaş CI koşucularında yetmiyordu: panel büyüyene kadar (en fazla 2 sn) yokla
+  for (let k = 0; k < 100 && d.h === 4; k++) await new Promise((res) => setTimeout(res, 20));
   assert.strictEqual(d.h, 4 + panelHeight(3, 30));
   assert.strictEqual(d.h, d.need());
   const mark = r.get().length;
