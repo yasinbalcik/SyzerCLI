@@ -586,9 +586,11 @@ async function runTool(name, a, call, session, allowedByRule) {
         if (done === list.length) {
           session.todos = []; // hepsi bitti: liste temizlenir
           session.planDone = new Set();
+          if (!session.agentName) require('./orca-hooks').plan([]);
           return { ok: true, output: `All ${done} tasks completed. Todo list cleared.`, ui: { summary: `${done}/${done}`, body: renderTodos(list, true) } };
         }
         session.todos = list;
+        if (!session.agentName) require('./orca-hooks').plan(list);
         const state = planned ? 'agent items are pending: call run_plan to execute the ready ones' : cur ? `now: "${cur.content}"` : `next: "${next.content}" (mark it in_progress before starting)`;
         return { ok: true, output: `Todo list updated: ${done}/${list.length} done, ${state}.`, ui: { summary: `${done}/${list.length}`, body: renderTodos(list, true) } };
       }

@@ -86,7 +86,7 @@ async function spawn(parent, call, signal) {
   parent.runs = parent.runs || [];
   parent.runs.push(run);
   try {
-    hooks.subagentStart({ id: `syz-${process.pid}-${id}`, kind: agent.name });
+    hooks.subagentStart({ id: `syz-${process.pid}-${id}`, kind: agent.name, description: a.description || trunc(a.prompt.replace(/s+/g, ' '), 80) });
     const route = require('./routing').subagentRoute(agent, a.read_only === true, parent.cfg);
     const sub = makeSub(parent, agent, label, id, run, a.model || null, route && route.model);
     routedRole = route && !a.model && !agent.model ? route.role : null;

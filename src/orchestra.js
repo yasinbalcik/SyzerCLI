@@ -60,6 +60,7 @@ async function runPlan(session, call, signal) {
     if (!ready.length) break;
     waves++;
     ready.forEach((x) => { x.status = 'in_progress'; delete x.error; });
+    if (!session.agentName) require('./orca-hooks').plan(list);
     session.out.toolResult(true, '', { summary: `wave ${waves}: ${ready.length} agent${ready.length > 1 ? 's' : ''}`, body: renderTodos(list, true) });
 
     await Promise.all(ready.map(async (item) => {
@@ -89,6 +90,7 @@ async function runPlan(session, call, signal) {
       const bad = isBad(r);
       if (!bad) { item.status = 'completed'; reports.set(item.id, r.output); (session.planDone ||= new Set()).add(item.id); }
       else { item.status = 'pending'; item.error = (r.stopped ? 'stopped at step limit' : r.ok ? 'empty report' : String(r.output || 'failed')).replace(/\s+/g, ' ').slice(0, 160); }
+      if (!session.agentName) require('./orca-hooks').plan(list);
       results.push({ item, ok: !bad, output: escalatedTo ? `(escalated to ${escalatedTo})\n${r.output}` : r.output });
     }));
     if (signal && signal.aborted) break;
@@ -100,6 +102,7 @@ async function runPlan(session, call, signal) {
   const allDone = list.every(isDone);
   const body = renderTodos(list, true);
   if (allDone) { session.todos = []; session.planDone = new Set(); }
+  if (!session.agentName) require('./orca-hooks').plan(session.todos || []);
 
   const sections = results.map(({ item, ok, output }) => `### [${item.id}] ${item.content} (${item.agent}${item.model ? ' · ' + item.model : ''}) — ${ok ? 'done' : 'FAILED'}\n${trunc(String(output), MAX_REPORT)}`);
   const tail = [];
