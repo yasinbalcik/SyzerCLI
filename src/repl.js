@@ -519,8 +519,7 @@ async function start(cfg, opts = {}, io = {}) {
       case 'subagent': await cmds.subagentSet(cfg, rest); return;
       case 'stats': cmds.statsShow(); return;
       case 'undo': {
-        const u = undoLast(s);
-        console.log(u ? C.green(`✔ ${t(u.removed ? 'undo_removed' : 'undo_done', path.relative(s.cwd, u.path) || u.path)}`) : C.gray(t('undo_none')));
+        cmds2.undoRun(s, rest);
         return;
       }
       case 'plan':
@@ -560,7 +559,7 @@ async function start(cfg, opts = {}, io = {}) {
       case 'diff': cmds2.gitDiffShow(s.cwd); return;
       case 'commit': await cmds2.commitFlow(s, arg, (q) => editor.readKey(q)); return;
       case 'review': { const p = cmds2.reviewPrompt(s.cwd); if (p) await chat(p); return; }
-      case 'checkpoints': cmds2.checkpointsShow(s); return;
+      case 'checkpoints': cmds2.fileCheckpointsShow(s); cmds2.checkpointsShow(s); return;
       case 'restore': await cmds2.restoreFlow(s, (q) => editor.readKey(q)); return;
       case 'todos': cmds2.todosShow(s); return;
       case 'tasks': cmds2.tasksShow(s, rest[0] === 'stop' ? rest[1] : null); return;

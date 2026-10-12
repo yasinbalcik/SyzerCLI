@@ -39,6 +39,7 @@ function makeSub(parent, agent, label, id, run, modelOverride) {
     get perm() { return parent.perm; },
     set perm(v) { parent.perm = v; },
     get plan() { return parent.plan; },
+    get sessionId() { return parent.sessionId; }, // süreç içi alt ajan düzenlemeleri ana turun checkpoint'ine yazılır
     get undo() { return parent.undo; },
     set undo(v) { parent.undo = v; },
     get settings() { return parent.settings; },

@@ -139,7 +139,37 @@ function noteMemory(cwd, text) {
   log(C.green(`✔ ${t('mem_saved', 'SYZER.md')}`));
 }
 
+// ---------- dosya checkpoint'leri (/undo, /checkpoints) ----------
+
+function fileCheckpointsShow(session) {
+  const list = require('./checkpoints').store().list(session.sessionId);
+  if (!list.length) return log(C.gray('No file checkpoints yet (taken before the first file edit of each turn).'));
+  list.slice(-10).forEach((c) => {
+    const names = c.files.map((f) => path.relative(session.cwd, f.path) || f.path);
+    const more = names.length > 3 ? ` +${names.length - 3}` : '';
+    log(`  ${C.gray('#' + c.turn)}  ${new Date(c.ts).toLocaleTimeString()}  ${C.cyan(names.slice(0, 3).join(', ') + more)}  ${C.gray(c.prompt.split(' ').slice(0, 6).join(' '))}`);
+  });
+}
+
+function undoRun(session, args) {
+  const force = args.includes('--force');
+  const num = args.find((a) => /^\d+$/.test(a));
+  const n = Math.max(1, parseInt(num || '1', 10));
+  const rel = (p) => path.relative(session.cwd, p) || p;
+  const r = require('./checkpoints').store().undo(session.sessionId, n, { force });
+  if (!r.turns && !r.conflicts.length) return log(C.gray(t('undo_none')));
+  r.restored.forEach((p) => log(C.green(`✔ ${t('undo_done', rel(p))}`)));
+  r.removed.forEach((p) => log(C.green(`✔ ${t('undo_removed', rel(p))}`)));
+  r.skipped.forEach((x) => log(C.yellow(`  skipped: ${rel(x.path)} (${x.why})`)));
+  if (r.conflicts.length) {
+    log(C.yellow(`Conflict in checkpoint #${r.conflictTurn}: changed after Syzer wrote it (by you or another tool):`));
+    r.conflicts.forEach((p) => log(C.yellow(`  ! ${rel(p)}`)));
+    log(C.gray('Nothing from this checkpoint was touched. Use /undo --force to overwrite.'));
+  }
+}
+
 module.exports = {
+  fileCheckpointsShow, undoRun,
   rulesList, ruleAdd, ruleRemove, tasksShow, todosShow, gitDiffShow, commitFlow, reviewPrompt,
   checkpointsShow, restoreFlow, noteMemory,
 };

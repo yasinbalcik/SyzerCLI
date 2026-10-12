@@ -46,7 +46,7 @@ module.exports = {
     low_keys: 'Key #{0} has only {1} free request(s) left today.',
     help2: `  /effort [level]   reasoning effort (auto off low medium high xhigh)
   /fallback [..]    backup models: auto | off | set <id> <id>
-  /undo             revert the agent's last file change
+  /undo [N] [--force]  revert file edits of the last N turns (Syzer's file tools only, not shell side effects)
   /resume           continue a saved session
   /stats            requests and tokens per day
   /plan · /go       plan first, then approve and execute`,
@@ -96,7 +96,7 @@ module.exports = {
     low_keys: 'Key #{0} için bugün sadece {1} free istek kaldı.',
     help2: `  /effort [seviye]  düşünme eforu (auto off low medium high xhigh)
   /fallback [..]    yedek modeller: auto | off | set <id> <id>
-  /undo             ajanın son dosya değişikliğini geri al
+  /undo [N] [--force]  son N turun dosya düzenlemelerini geri al (yalnız Syzer'in dosya araçları, kabuk yan etkileri hariç)
   /resume           kayıtlı oturuma devam et
   /stats            günlük istek ve token istatistiği
   /plan · /go       önce plan, sonra onay ve uygulama`,

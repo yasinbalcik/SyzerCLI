@@ -503,8 +503,11 @@ async function runTool(name, a, call, session, allowedByRule) {
       case 'write_file':
       case 'edit_file': {
         snapshot(session, change.p);
+        const cps = require('./checkpoints').store();
+        cps.record(session.sessionId, change.p);
         fs.mkdirSync(path.dirname(change.p), { recursive: true });
         fs.writeFileSync(change.p, change.after);
+        cps.wrote(session.sessionId, change.p);
         const { added, removed } = countOps(ops);
         const isNew = name === 'write_file' && !change.existed;
         const summary = isNew ? t('sum_wrote', lineCount(change.after)) : t('sum_diff', added, removed);

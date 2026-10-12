@@ -55,6 +55,7 @@ function save(s) {
     for (const old of files.slice(0, -MAX)) {
       fs.unlinkSync(path.join(DIR, old));
       fs.rmSync(path.join(DIR, old.slice(0, -5)), { recursive: true, force: true });
+      fs.rmSync(path.join(config.DIR, 'checkpoints', old.slice(0, -5)), { recursive: true, force: true });
     }
   } catch { /* önemsiz */ }
 }
