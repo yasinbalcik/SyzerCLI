@@ -3,7 +3,7 @@
 // Orkestra: todo listesindeki `agent` atanmış maddeleri bağımlılık sırasına göre dalgalar halinde,
 // her dalgada paralel alt ajanlarla çalıştırır. Ana model orkestratördür; alt ajanlar kendi (ucuz) modelleriyle çalışır.
 const { renderTodos } = require('./tools');
-const { trunc } = require('./ui');
+const { trunc, head } = require('./ui');
 
 const MAX_DEP_CONTEXT = 2500; // bağımlı ajana aktarılan rapor başına karakter
 const MAX_REPORT = 3500; // orkestratöre dönen rapor başına karakter
@@ -64,7 +64,7 @@ async function runPlan(session, call, signal) {
     session.out.toolResult(true, '', { summary: `wave ${waves}: ${ready.length} agent${ready.length > 1 ? 's' : ''}`, body: renderTodos(list, true) });
 
     await Promise.all(ready.map(async (item) => {
-      const args = { agent: item.agent, description: trunc(item.content, 40), prompt: `${item.prompt || item.content}${depContext(item, reports)}${RULES}` };
+      const args = { agent: item.agent, description: head(item.content, 70), prompt: `${item.prompt || item.content}${depContext(item, reports)}${RULES}` };
       if (item.model) args.model = item.model;
       if (readOnly) args.read_only = true;
       let r;
@@ -74,14 +74,14 @@ async function runPlan(session, call, signal) {
         const first = r;
         if (isBad(r) && !(signal && signal.aborted)) { // geçici hata / adım sınırı: bir kez daha, daha geniş bütçeyle
           const why = r.stopped ? 'ran out of steps' : r.ok ? 'returned no report' : 'failed';
-          if (session.out.warn) session.out.warn(`[${item.agent}: ${trunc(item.content, 30)}] ${why}; retrying once`);
+          if (session.out.warn) session.out.warn(`[${item.agent}: ${head(item.content, 40)}] ${why}; retrying once`);
           const retry = { ...args, max_steps: RETRY_STEPS, prompt: `${args.prompt}\n\n(Your previous attempt ${why}. Be efficient: read only what you need, then finish with your final report.)` };
           r = await spawn(session, { arguments: JSON.stringify(retry) }, signal);
           // routing.escalate: ucuz rol modeli iki kez üst üste başarısızsa ana/edit modeliyle bir kez daha (görev başına en çok 1)
           const R = require('./routing');
           const target = (R.explicit('edit', session.cfg) || {}).model || session.model;
           if (R.shouldEscalate({ enabled: R.normalize((session.cfg || {}).routing).escalate, first, second: r, used: r.model, target, routedRole: r.routedRole || first.routedRole, done: false }, isBad) && !(signal && signal.aborted)) {
-            if (session.out.warn) session.out.warn(`[${item.agent}: ${trunc(item.content, 30)}] failed twice on ${r.model}; escalating to ${target}`);
+            if (session.out.warn) session.out.warn(`[${item.agent}: ${head(item.content, 40)}] failed twice on ${r.model}; escalating to ${target}`);
             r = await spawn(session, { arguments: JSON.stringify({ ...retry, model: target }) }, signal);
             escalatedTo = target;
           }

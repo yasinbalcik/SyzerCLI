@@ -2,7 +2,7 @@
 
 const { subSystem } = require('./context');
 const { t } = require('./i18n');
-const { trunc } = require('./ui');
+const { trunc, head } = require('./ui');
 
 const MAX_REPORT = 8000;
 const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'find_files', 'search_files', 'use_skill', 'web_fetch', 'web_search']);
@@ -76,7 +76,7 @@ async function spawn(parent, call, signal) {
   if (!agent) return { ok: false, output: `Unknown agent "${a.agent}". Available: ${agents.map((x) => x.name).join(', ')}` };
 
   const id = ++counter;
-  const label = `${agent.name}: ${a.description || trunc(a.prompt.replace(/\s+/g, ' '), 40)}`;
+  const label = `${agent.name}: ${a.description || head(a.prompt, 70)}`;
   const po = parent.out;
   po.agentStart && po.agentStart(id, label);
   const hooks = require('./orca-hooks');
@@ -86,7 +86,7 @@ async function spawn(parent, call, signal) {
   parent.runs = parent.runs || [];
   parent.runs.push(run);
   try {
-    hooks.subagentStart({ id: `syz-${process.pid}-${id}`, kind: agent.name, description: a.description || trunc(a.prompt.replace(/s+/g, ' '), 80) });
+    hooks.subagentStart({ id: `syz-${process.pid}-${id}`, kind: agent.name, description: a.description || head(a.prompt, 120) });
     const route = require('./routing').subagentRoute(agent, a.read_only === true, parent.cfg);
     const sub = makeSub(parent, agent, label, id, run, a.model || null, route && route.model);
     routedRole = route && !a.model && !agent.model ? route.role : null;

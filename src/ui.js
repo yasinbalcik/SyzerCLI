@@ -29,6 +29,12 @@ function trunc(s, n) {
   return s.length > n ? '…' + s.slice(s.length - n + 1) : s;
 }
 
+// Başı korur, sığmazsa sonuna … koyar (açıklama/başlık metinleri için; trunc ise sonu korur)
+function head(s, n) {
+  s = String(s).replace(/\s+/g, ' ').trim();
+  return s.length > n ? s.slice(0, Math.max(0, n - 1)) + '…' : s;
+}
+
 function box(lines) {
   const cols = process.stdout.columns || 80;
   const inner = Math.min(Math.max(...lines.map(vlen)), cols - 6);
@@ -157,4 +163,4 @@ function diffPreview(oldStr, newStr, max = 10) {
   return [...cut(oldStr, '-', C.red), ...cut(newStr, '+', C.green)].join('\n');
 }
 
-module.exports = { C, useColor, strip, charWidth, vlen, pad, trunc, box, bar, spinner, MdStream, diffPreview };
+module.exports = { head, C, useColor, strip, charWidth, vlen, pad, trunc, box, bar, spinner, MdStream, diffPreview };

@@ -113,6 +113,7 @@ async function runTurn(session, userContent, signal) {
   if (!session.agentName) require('./checkpoints').store().beginTurn(session.sessionId, typeof userContent === 'string' ? userContent : (userContent.find((p) => p.type === 'text') || {}).text || '');
   if (top) { hooks.setSession(session.sessionId); try { require('./sessions').save(session); } catch { /* önemsiz */ } } // oturum dosyası ilk olaydan önce diskte olsun
   if (top) hooks.promptSubmitted(typeof userContent === 'string' ? userContent : (userContent.find((p) => p.type === 'text') || {}).text || '');
+  if (top) hooks.plan(session.todos || []); // bekleyen todo'lar yeni turda Orca listesinde yeniden görünsün
 
   const totals = { tokens: 0, ms: 0, keyIndex: -1, model: session.model, toolCalls: 0 };
   const t0 = Date.now();
