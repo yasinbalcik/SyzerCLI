@@ -111,3 +111,8 @@ test('desktop layout hides panel toggles that would do nothing and clamps long s
   assert.match(html, /@media\(min-width:1200px\)\{[^}]*#tl[^}]*#tr[^}]*display:none/);
   assert.match(html, /\.item \.desc\{[^}]*-webkit-line-clamp:3/);
 });
+
+test('activity tracking does not break the stream event chain (text must not fall to unknown)', () => {
+  assert.doesNotMatch(html, /else actEvent\(e\)/);
+  assert.match(html, /catch\{continue\}actEvent\(e\);if\(e\.type==='text'\)/);
+});
