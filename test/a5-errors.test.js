@@ -59,7 +59,7 @@ test('A5 minor: Turkish subagent hierarchy explanation is Turkish', () => {
 });
 
 test('A5 minor: tool output clipping uses the shared truncation suffix', async () => {
-  const out = await execute({ name: 'run_command', arguments: JSON.stringify({ command: "Write-Output ('x' * 21000)" }) }, session());
+  const out = await execute({ name: 'run_command', arguments: JSON.stringify({ command: `node -e "process.stdout.write('x'.repeat(21000))"` }) }, session());
   assert.match(out.output, /…\(truncated\)/);
   assert.doesNotMatch(out.output, /…\(truncated \d+ chars\)/);
 });
