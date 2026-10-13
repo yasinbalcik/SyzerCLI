@@ -24,9 +24,21 @@ test('mcp: Windows invokes cmd.exe with quoted command and arguments', () => {
   client.start();
   assert.equal(seen[0], 'cmd.exe');
   assert.deepEqual(seen[1].slice(0, 3), ['/d', '/s', '/c']);
-  assert.match(seen[1][3], /^"C:\/Program Files\/tool\.cmd" "a b" "x\^&y"/);
-  assert.match(seen[1][3], /say \\\"hi\\\"/);
+  assert.match(seen[1][3], /^"\^"C:\/Program\^ Files\/tool\.cmd\^"/);
+  assert.match(seen[1][3], /x\^&y/);
+  assert.match(seen[1][3], /say\^ \\\^"hi\\\^"/);
   assert.equal(seen[2].shell, false);
+  assert.equal(seen[2].windowsVerbatimArguments, true);
+});
+
+test('mcp: Windows real cmd.exe round-trips awkward arguments without injection', { skip: process.platform !== 'win32' }, async () => {
+  const { spawnMcp } = require('../src/proc');
+  const want = ['a b', 'say "hi"', 'x & echo PWNED', 'C:\\dir\\', '(p) ^ <>|'];
+  const c = spawnMcp('node', ['-e', 'console.log(JSON.stringify(process.argv.slice(1)))', ...want], { stdio: ['ignore', 'pipe', 'ignore'] });
+  let out = '';
+  c.stdout.on('data', (d) => { out += d; });
+  await new Promise((r) => c.on('close', r));
+  assert.deepEqual(JSON.parse(out), want);
 });
 
 test('mcp: close ends stdin and delegates whole-tree shutdown', () => {
