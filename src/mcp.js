@@ -1,13 +1,13 @@
 'use strict';
 
-const { spawn } = require('child_process');
+const { spawnMcp, killTree } = require('./proc');
 const pkg = require('../package.json');
 
 const PROTOCOL = '2024-11-05';
 
 // stdio üzerinden satır satır JSON-RPC konuşan minimal MCP istemcisi
 class McpClient {
-  constructor(name, spec, cwd) {
+  constructor(name, spec, cwd, deps = {}) {
     this.name = name;
     this.spec = spec;
     this.cwd = cwd;
@@ -16,19 +16,14 @@ class McpClient {
     this.buf = '';
     this.tools = [];
     this.stderr = '';
+    this.deps = deps;
   }
 
   start() {
     const { command, args = [], env = {} } = this.spec;
     if (!command) throw new Error('only stdio servers (command) are supported');
     const opts = { cwd: this.cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'] };
-    if (process.platform === 'win32') {
-      // npx.cmd gibi komutlar kabuk ister; shell + args dizisi tırnaklamadığı için komutu kendimiz kuruyoruz
-      const q = (s) => (/[\s"&|<>^]/.test(s) ? `"${String(s).replace(/"/g, '\\"')}"` : s);
-      this.child = spawn([command, ...args].map(q).join(' '), { ...opts, shell: true });
-    } else {
-      this.child = spawn(command, args, opts);
-    }
+    this.child = spawnMcp(command, args, opts, this.deps);
     this.child.stdout.on('data', (d) => this._data(d));
     this.child.stderr.on('data', (d) => { this.stderr = (this.stderr + d).slice(-2000); });
     this.child.on('error', (e) => this._fail(e));
@@ -94,7 +89,10 @@ class McpClient {
     return { ok: !r.isError, text: text || '(empty)' };
   }
 
-  close() { try { this.child.stdin.end(); this.child.kill(); } catch { /* kapalı */ } }
+  close() {
+    try { if (this.child && this.child.stdin) this.child.stdin.end(); } catch { /* kapalı */ }
+    try { (this.deps.killTree || killTree)(this.child, this.deps); } catch { /* kapalı */ }
+  }
 }
 
 const safe = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, '_');
