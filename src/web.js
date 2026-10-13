@@ -166,6 +166,9 @@ function start(cfg, { port = 8788, host = '127.0.0.1', open = true, cwd = proces
         if (r) { pending.delete(body.id); r(['yes', 'no', 'always', 'rule'].includes(body.answer) ? body.answer : 'no'); }
         return send(res, 200, { ok: true });
       }
+      if (url.pathname === '/api/pickfolder') {
+        try { return send(res, 200, await require('./folder-pick').pickFolder({ title: body.title ? String(body.title).slice(0, 80) : undefined })); } catch (e) { return send(res, 501, { error: e.code || e.message }); }
+      }
       if (url.pathname === '/api/workspace') {
         if (busy) return send(res, 409, { error: 'busy' });
         const p = body.path ? path.resolve(String(body.path)) : null;
