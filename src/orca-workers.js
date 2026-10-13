@@ -28,6 +28,46 @@ const runCli = (args, signal) => new Promise((resolve, reject) => {
   execFile(orcaCli(), args, { timeout: 30000, windowsHide: true, ...(signal ? { signal } : {}) }, (err, out, errOut) => (err ? reject(new Error((errOut || err.message).toString().trim().split('\n')[0])) : resolve(out)));
 });
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Orca CLI sürümleri terminal durumunu vermeyebilir. Bu durumda unknown dönerek
+// eski result.txt bekleme davranışını korur; yalnız kesin bir çıkış hızla hatadır.
+function terminalState(value) {
+  const terminal = value && (value.result?.terminal || value.terminal || value.result || value);
+  if (!terminal || typeof terminal !== 'object') return 'unknown';
+  if (terminal.exitCode !== undefined && terminal.exitCode !== null) return 'exited';
+  if (terminal.running === true || terminal.alive === true) return 'running';
+  const state = String(terminal.state || terminal.status || '').toLowerCase();
+  if (/^(running|active|open|created)$/.test(state)) return 'running';
+  if (/^(exited|closed|failed|terminated|stopped|dead)$/.test(state)) return 'exited';
+  return 'unknown';
+}
+
+async function probeTerminal(handle, signal) {
+  if (!handle) return { state: 'unknown' };
+  try { return { state: terminalState(JSON.parse(await runCli(['terminal', 'status', '--terminal', handle, '--json'], signal))) }; } catch (_) { return { state: 'unknown' }; }
+}
+
+async function waitForWorkerResult(outFile, handle, {
+  probe = (h) => probeTerminal(h), sleep: wait = sleep, pollMs = 1000, settleMs = 300,
+  deadlineMs = 15 * 60 * 1000, signal, fsImpl = fs,
+} = {}) {
+  const deadline = Date.now() + deadlineMs;
+  while (!fsImpl.existsSync(outFile)) {
+    if (signal && signal.aborted) { const e = new Error('aborted'); e.name = 'AbortError'; throw e; }
+    if (Date.now() > deadline) throw new Error('worker timed out (15 min)');
+    const status = await probe(handle, signal);
+    if (status && status.state === 'exited') {
+      const e = new Error(`worker terminal ${handle || '?'} exited before writing a result`);
+      e.code = 'WORKER_EXITED';
+      throw e;
+    }
+    await wait(pollMs);
+  }
+  if (settleMs) await wait(settleMs); // yazma bitsin
+  return fsImpl.readFileSync(outFile, 'utf8').trim() || '(no output)';
+}
+
 // Orca terminalinin kabuğu (PowerShell/cmd/bash) bilinmediğinden mümkünse PATH'teki yalın `syzer` komutu kullanılır
 let cached;
 function selfCmd() {
@@ -61,14 +101,7 @@ async function runOnce(parent, a, id, attempt, signal) {
   let handle = null;
   try { handle = JSON.parse(created).result.terminal.handle; } catch { /* önemsiz */ }
 
-  const deadline = Date.now() + 15 * 60 * 1000;
-  while (!fs.existsSync(outFile)) {
-    if (signal && signal.aborted) { const e = new Error('aborted'); e.name = 'AbortError'; throw e; }
-    if (Date.now() > deadline) throw new Error('worker timed out (15 min)');
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  await new Promise((r) => setTimeout(r, 300)); // yazma bitsin
-  const report = fs.readFileSync(outFile, 'utf8').trim() || '(no output)';
+  const report = await waitForWorkerResult(outFile, handle, { signal });
   if (process.env.SYZER_WORKER_CLOSE && handle) runCli(['terminal', 'close', '--terminal', handle, '--json']).catch(() => {});
   return report;
 }
@@ -133,4 +166,4 @@ async function spawnWorker(parent, call, signal) {
   }
 }
 
-module.exports = { available, spawnWorker, clipWorkerReport, workerFailure };
+module.exports = { available, spawnWorker, clipWorkerReport, workerFailure, terminalState, waitForWorkerResult };
