@@ -148,3 +148,11 @@ test('tool rows are single expandable lines, empty activity headers are not push
   assert.match(html, /\.act \.ahead\.empty\{margin:0/);
   assert.match(html, /function guessLang\(/);
 });
+
+test('file changes: server sends real diff stats and the UI shows a per-turn summary card', () => {
+  assert.ok(html.includes("e.type==='toolResult'&&e.stat&&e.stat.path"));
+  assert.ok(html.includes('function turnCard('));
+  assert.ok(html.includes("fileChanged:'{n} dosya değişti'"));
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../src/web.js'), 'utf8');
+  assert.ok(src.includes('stat: ui && ui.stat ? ui.stat : null'));
+});

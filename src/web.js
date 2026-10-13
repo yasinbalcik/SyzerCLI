@@ -67,7 +67,7 @@ function start(cfg, { port = 8788, host = '127.0.0.1', open = true, cwd = proces
     text(txt) { emit({ type: 'text', text: txt }); },
     endText() { emit({ type: 'endText' }); },
     tool(name, summary) { emit({ type: 'tool', name, summary }); },
-    toolResult(ok, text, ui) { emit({ type: 'toolResult', ok, summary: ui ? ui.summary : String(text).split('\n')[0].slice(0, 160), body: ui && ui.body ? String(ui.body).replace(/\x1b\[[0-9;]*m/g, '').slice(0, 4000) : null }); },
+    toolResult(ok, text, ui) { emit({ type: 'toolResult', ok, summary: ui ? ui.summary : String(text).split('\n')[0].slice(0, 160), body: ui && ui.body ? String(ui.body).replace(/\x1b\[[0-9;]*m/g, '').slice(0, 4000) : null, stat: ui && ui.stat ? ui.stat : null }); },
     warn(msg) { emit({ type: 'warn', text: msg }); },
     notice(msg) { emit({ type: 'notice', text: msg }); },
     agentStart(id, label) { emit({ type: 'agentStart', id, label }); },

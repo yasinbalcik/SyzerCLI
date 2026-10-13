@@ -503,7 +503,7 @@ async function runTool(name, a, call, session, allowedByRule) {
         return {
           ok: true,
           output: name === 'write_file' ? `Wrote ${change.p}` : `Edited ${change.p} (${change.n} replacement(s)${change.fuzzy ? ', whitespace-insensitive match' : ''})`,
-          ui: { summary, body: renderDiff(ops, { maxRows: isNew ? 15 : 40 }) },
+          ui: { summary, body: renderDiff(ops, { maxRows: isNew ? 15 : 40 }), stat: { add: added, del: removed, path: path.relative(session.cwd, change.p) || change.p } },
         };
       }
       case 'list_dir': {
