@@ -141,3 +141,10 @@ test('message actions, code block headers, scrollbars and typography', () => {
   assert.match(html, /\[data-theme=light\] \.composer-box/);
   assert.doesNotMatch(md('```js\nx\n```'), /codeblock/);
 });
+
+test('tool rows are single expandable lines, empty activity headers are not pushed down, unlabeled code gets a guessed language', () => {
+  assert.match(html, /class=\?"tline\?"/);
+  assert.doesNotMatch(html, /<summary>Details<\/summary>/);
+  assert.match(html, /\.act \.ahead\.empty\{margin:0/);
+  assert.match(html, /function guessLang\(/);
+});
