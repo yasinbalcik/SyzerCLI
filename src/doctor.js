@@ -38,10 +38,19 @@ function orcaDoctorRows(d, { version, latest, cmpVer } = {}) {
     const st = String(g.status || '');
     const applied = g.applied === true || st === 'applied' || st === 'ok';
     const why = g.reason || g.why || (Array.isArray(g.reasons) ? g.reasons.join('; ') : g.reasons) || g.error || '';
-    rows.push({ level: applied ? 'ok' : 'warn', name: `Orca grup ${name}`, detail: applied ? 'uygulandı' : `atlandı${why ? `: ${why}` : ''}` });
+    const anchorLost = /anchor.*(?:matched\s*0x|missing|not found)/i.test(String(why));
+    rows.push({ level: applied ? 'ok' : 'warn', name: `Orca grup ${name}`, detail: applied ? 'uygulandı' : `atlandı${why ? `: ${why}` : ''}${anchorLost ? '; ilgili özellik devre dışı' : ''}` });
   }
   if (!list.length && d.exitCode === 2) rows.push({ level: 'warn', name: 'Orca doctor', detail: 'bazı gruplar atlandı' });
   return rows;
+}
+
+function orcaStatusRows(o, version) {
+  if (!o || o.error || !o.found) return [];
+  const base = `Orca ${o.orcaVersion || '?'}, eklenti v${version || '?'}`;
+  if (!o.patched) return [{ level: 'warn', name: 'Orca yaması', detail: `${base}: Orca güncellemesinden sonra yama düşmüş veya uygulanmamış; Orca kapalıyken "syzer orca patch" çalıştırın` }];
+  if (!o.upToDate) return [{ level: 'warn', name: 'Orca yaması', detail: `${base}: yama eski; Orca güncellemesi sonrası özellikler kaybolabilir. Orca kapalıyken "syzer orca patch" çalıştırın` }];
+  return [{ level: 'ok', name: 'Orca yaması', detail: `${base}: güncel` }];
 }
 
 async function run(cfg, { online = false } = {}) {
@@ -72,7 +81,7 @@ async function run(cfg, { online = false } = {}) {
       else if (o.error) add('fail', 'Orca eklentisi', o.error);
       else if (!o.found) add('warn', 'Orca', 'bulunamadı (isteğe bağlı)');
       else {
-        add(o.upToDate ? 'ok' : 'warn', 'Orca yaması', `Orca ${o.orcaVersion}, eklenti v${bridge.installedVersion()}: ${o.patched ? (o.upToDate ? 'güncel' : 'eski sürüm, Orca kapalıyken "syzer orca patch" ya da masaüstü kısayolu') : 'uygulanmamış ("syzer orca install --shortcut")'}`);
+        for (const r of orcaStatusRows(o, bridge.installedVersion())) rows.push(r);
         if (o.skippedGroups && o.skippedGroups.length) add('warn', 'Orca atlanan gruplar', o.skippedGroups.join(' | '));
       }
       if (o && !o.error) {
@@ -91,4 +100,4 @@ async function run(cfg, { online = false } = {}) {
   return rows;
 }
 
-module.exports = { run, keyPoolRows, orcaDoctorRows };
+module.exports = { run, keyPoolRows, orcaDoctorRows, orcaStatusRows };

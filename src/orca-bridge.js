@@ -68,12 +68,29 @@ function exec(args, opts = {}) {
   return spawnSync(nodeBin(), [entry(), ...args], { stdio: 'inherit', env: { ...process.env, SYZER_CLI_CMD: cliCmd() }, ...opts });
 }
 
+// `status --json`un gövdesini değiştirmeden, insan çalıştırmalarında yama kaybını
+// stderr'e görünür kılar. Bu durum çoğunlukla Orca'nın app.asar güncellemesidir.
+function patchWarning(status) {
+  if (!status || status.error || !status.found) return '';
+  if (!status.patched) return 'Orca yaması uygulanmamış veya Orca güncellemesinden sonra düşmüş; Orca kapalıyken "syzer orca patch" çalıştırın.';
+  if (!status.upToDate) return 'Orca yaması eski; Orca güncellemesi sonrası bazı özellikler kaybolabilir. Orca kapalıyken "syzer orca patch" çalıştırın.';
+  return '';
+}
+
 // `syzer orca <alt komut> ...`: args = "orca"dan sonrakiler
 async function run(args) {
   const sub = args[0];
   if (sub === 'update') { if (!(await ensure({ force: true }))) { process.exitCode = 1; return; } console.log(`Orca plugin v${installedVersion()}`); return; }
   // kurulumda her zaman en son sürümü al; diğer komutlar kuruluyu kullanır
   if (!(await ensure({ force: sub === 'install' })) || !installed()) { process.exitCode = 1; return; }
+  if (sub === 'status') {
+    const r = spawnSync(nodeBin(), [entry(), ...args], { encoding: 'utf8', env: { ...process.env, SYZER_CLI_CMD: cliCmd() } });
+    if (r.stdout) process.stdout.write(r.stdout);
+    if (r.stderr) process.stderr.write(r.stderr);
+    try { const warning = patchWarning(JSON.parse(r.stdout)); if (warning) console.error(`! ${warning}`); } catch (_) { /* eklentinin kendi biçimini bozma */ }
+    process.exitCode = r.error || r.status == null ? 1 : r.status;
+    return;
+  }
   const r = exec(args);
   if (r.error) { console.error(r.error.code === 'ENOENT' ? 'Node.js is required to run the Orca plugin (https://nodejs.org).' : r.error.message); process.exitCode = 1; return; }
   process.exitCode = r.status == null ? 1 : r.status;
@@ -95,4 +112,4 @@ function doctorJson({ timeout = 5000, spawn = spawnSync } = {}) {
   try { return { ...JSON.parse(r.stdout), exitCode: r.status }; } catch { return { error: (r.stderr || r.stdout || 'unreadable doctor output').trim().slice(0, 200) }; }
 }
 
-module.exports = { run, status, doctorJson, latest, ensure, installed, installedVersion, cliCmd, PLUGIN_REPO };
+module.exports = { run, status, doctorJson, latest, ensure, installed, installedVersion, cliCmd, patchWarning, PLUGIN_REPO };
