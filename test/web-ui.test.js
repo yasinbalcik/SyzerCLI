@@ -106,3 +106,8 @@ test('inline script parses cleanly without syntax errors', () => {
     new Function(match[1]);
   });
 });
+
+test('desktop layout hides panel toggles that would do nothing and clamps long skill text', () => {
+  assert.match(html, /@media\(min-width:1200px\)\{[^}]*#tl[^}]*#tr[^}]*display:none/);
+  assert.match(html, /\.item \.desc\{[^}]*-webkit-line-clamp:3/);
+});
