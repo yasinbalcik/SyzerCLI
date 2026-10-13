@@ -71,6 +71,21 @@ test('never writes full keys and never throws on broken fs', () => {
   assert.deepStrictEqual(bad.rank('p', [E('a')], (k) => k).length, 1);
 });
 
+test('key health: atomic writer retries transient Windows rename locks without changing compact JSON', () => {
+  const { h, fsImpl } = mk();
+  const rename = fsImpl.renameSync;
+  let attempts = 0;
+  fsImpl.renameSync = (from, to) => {
+    attempts++;
+    if (attempts < 3) { const err = new Error('locked'); err.code = attempts === 1 ? 'EPERM' : 'EBUSY'; throw err; }
+    rename(from, to);
+  };
+  h.recordOutcome('provider', 'masked-key', 'ok');
+  assert.equal(attempts, 3);
+  assert.match(fsImpl.files['/h.json'], /^\{"provider:masked-key":/);
+  assert.equal(Object.keys(fsImpl.files).length, 1);
+});
+
 test('doctor key pool rows: ready/total, cooling, worst rate', () => {
   const rows = keyPoolRows({ providers: [
     { id: 'openrouter', keys: [{ state: 'ready', cooldownSec: 0, failRate: 0.1 }, { state: 'ready', cooldownSec: 20, failRate: 0.6 }, { state: 'off', cooldownSec: 0, failRate: 0 }] },

@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { writeJsonAtomic } = require('./atomic-json');
 
 const DIR = process.env.SYZER_HOME || path.join(os.homedir(), '.syzercli');
 const FILE = path.join(DIR, 'key-health.json');
@@ -22,10 +23,7 @@ function classify(status, message) {
 function create({ file = FILE, now = Date.now, fsImpl = fs } = {}) {
   const read = () => { try { const j = JSON.parse(fsImpl.readFileSync(file, 'utf8')); return j && typeof j === 'object' ? j : {}; } catch { return {}; } };
   const write = (db) => {
-    fsImpl.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${process.pid}.tmp`;
-    fsImpl.writeFileSync(tmp, JSON.stringify(db), { mode: 0o600 });
-    fsImpl.renameSync(tmp, file);
+    writeJsonAtomic(file, db, { fsImpl, space: 0, mode: 0o600 });
   };
   const id = (provider, fp) => `${provider}:${fp}`;
 

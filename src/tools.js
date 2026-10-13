@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawnShell, killTree } = require('./proc');
 const { t } = require('./i18n');
 const { C } = require('./ui');
 const { diffLines, countOps, renderDiff } = require('./diff');
@@ -127,19 +127,6 @@ function* walk(dir, base = dir) {
 }
 
 // ---------- kabuk / arka plan ----------
-
-function spawnShell(command, cwd) {
-  return process.platform === 'win32'
-    ? spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { cwd })
-    : spawn('sh', ['-c', command], { cwd, detached: false });
-}
-
-function killTree(child) {
-  try {
-    if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/t', '/f']);
-    else child.kill('SIGTERM');
-  } catch { /* zaten bitmiş */ }
-}
 
 function runShell(command, cwd, timeoutMs) {
   return new Promise((resolve) => {

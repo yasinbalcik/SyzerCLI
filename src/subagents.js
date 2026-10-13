@@ -10,13 +10,33 @@ const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'find_files', 'search_
 let counter = 0;
 
 // Eşzamanlı alt ajan sayısını sınırlar (free modellerde dakika limiti var)
-const gate = { active: 0, waiters: [] };
-async function limited(max, fn) {
-  while (gate.active >= max) await new Promise((r) => gate.waiters.push(r));
-  gate.active++;
-  try { return await fn(); }
-  finally { gate.active--; const w = gate.waiters.shift(); if (w) w(); }
+function abortError() { const err = new Error('The operation was aborted'); err.name = 'AbortError'; return err; }
+function createLimiter() {
+  const gate = { active: 0, waiters: [] };
+  async function limited(max, fn, signal) {
+    if (signal && signal.aborted) throw abortError();
+    while (gate.active >= max) {
+      await new Promise((resolve, reject) => {
+        const waiter = () => { if (signal) signal.removeEventListener('abort', onAbort); resolve(); };
+        const onAbort = () => {
+          const i = gate.waiters.indexOf(waiter);
+          if (i >= 0) gate.waiters.splice(i, 1);
+          signal.removeEventListener('abort', onAbort);
+          reject(abortError());
+        };
+        gate.waiters.push(waiter);
+        if (signal) signal.addEventListener('abort', onAbort, { once: true });
+      });
+      if (signal && signal.aborted) throw abortError();
+    }
+    gate.active++;
+    try { return await fn(); }
+    finally { gate.active--; const w = gate.waiters.shift(); if (w) w(); }
+  }
+  return { gate, limited };
 }
+const limiter = createLimiter();
+const { gate, limited } = limiter;
 
 // Alt ajan oturumu: kendi mesaj geçmişi var; izin/plan/geri alma yığını ana oturumla paylaşılır.
 function makeSub(parent, agent, label, id, run, modelOverride, routedModel) {
@@ -99,7 +119,7 @@ async function spawn(parent, call, signal) {
       po.agentRun && po.agentRun(id);
       sub.spread = gate.active > 1 ? id : null; // birden fazla ajan aynı anda çalışıyorsa key'lere dağıt
       return runTurn(sub, a.prompt, signal);
-    });
+    }, signal);
     const report = (r.content || '').trim() || '(no output)';
     Object.assign(run, { report, ok: true, tokens: r.tokens, calls: r.toolCalls, model: sub.model });
     const secs = ((Date.now() - t0) / 1000).toFixed(1);
@@ -124,4 +144,4 @@ async function spawn(parent, call, signal) {
   }
 }
 
-module.exports = { spawn, makeSub, READ_ONLY_TOOLS };
+module.exports = { spawn, makeSub, READ_ONLY_TOOLS, createLimiter, limited };
