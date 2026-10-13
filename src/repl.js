@@ -587,7 +587,7 @@ async function start(cfg, opts = {}, io = {}) {
         return;
       case 'resume': {
         const matches = sessions.filterSessions(sessions.list(s.cwd), arg);
-        const list = arg ? matches : matches.slice(0, 9);
+        const list = matches.slice(0, 9); // seçici yalnız 1-9 tuşunu kabul eder
         if (!list.length) { console.log(C.gray(t(arg ? 'sess_search_none' : 'sess_none'))); return; }
         list.forEach((x, i) => console.log(`  ${C.gray(String(i + 1))}  ${trunc(x.title, 60)}  ${C.gray(`${new Date(x.ts).toLocaleString()} · ${x.messages.length - 1} msg`)}`));
         const k = await editor.readKey(C.cyan(t('sess_pick')));
