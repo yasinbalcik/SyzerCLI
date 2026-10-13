@@ -11,6 +11,7 @@ const P = require('./prompts');
 const hooks = require('./orca-hooks');
 
 const MAX_STEPS = 30;
+const MAX_STOP_HOOKS = 3; // Stop kancasının bir turda modeli geri çevirme sınırı
 
 // Yoğun (5xx/ağ) model kısa süre atlanır; süreçler (alt ajan, Orca işçileri) arasında dosyadan paylaşılır
 const BUSY_MS = 5 * 60 * 1000;
@@ -95,6 +96,15 @@ async function callModel(session, signal, hooks) {
   }
 }
 
+// Zayıf/küçük model profili: sistem istemi sonuna [SCAFFOLD] bloğu eklenir/çıkarılır (model değişince yeniden hesaplanır)
+function applyScaffold(session, on) {
+  const m = session.messages[0];
+  if (!m || m.role !== 'system' || typeof m.content !== 'string') return;
+  const i = m.content.indexOf('\n\n[SCAFFOLD]');
+  const base = i >= 0 ? m.content.slice(0, i) : m.content;
+  m.content = on ? `${base}\n\n${P.scaffold({ language: getLang() })}` : base;
+}
+
 async function runTurn(session, userContent, signal) {
   const { out } = session;
   const top = !session.agentName; // Orca durum olayları yalnızca ana oturum için
@@ -103,6 +113,26 @@ async function runTurn(session, userContent, signal) {
     session.budget = B.createTracker(B.resolve(session.cfg.budget, process.env, session.budgetFlags));
   }
   const bud = session.budget;
+  // Kullanıcı kancaları (yalnızca ana oturum): SessionStart (oturumun ilk turu) + UserPromptSubmit
+  const userHooks = require('./hooks');
+  const hookCtx = [];
+  const rawContent = userContent; // hook bağlamı eklenmemiş özgün istek (görev metni/Orca/checkpoint için)
+  if (top && session.settings && !userHooks.disabled()) {
+    const promptText = typeof userContent === 'string' ? userContent : ((userContent.find((p) => p.type === 'text') || {}).text || '');
+    if (!session.sessionStartFired) {
+      session.sessionStartFired = true;
+      const r = await userHooks.fire(session.settings, 'SessionStart', { session_id: session.sessionId, source: 'startup' }, session.cwd, 'startup');
+      if (r.context) hookCtx.push(r.context);
+    }
+    const r = await userHooks.fire(session.settings, 'UserPromptSubmit', { session_id: session.sessionId, prompt: promptText }, session.cwd);
+    if (r.block) return { content: r.message, blocked: true, tokens: 0, ms: 0, keyIndex: -1, model: session.model, toolCalls: 0 };
+    if (r.context) hookCtx.push(r.context);
+  }
+  if (hookCtx.length) { // hook bağlamı kullanıcı mesajına [system reminder] olarak eklenir
+    const extra = `\n\n[system reminder]\n${hookCtx.join('\n')}`;
+    if (typeof userContent === 'string') userContent += extra;
+    else userContent = [...userContent, { type: 'text', text: extra.trim() }];
+  }
   const compactMod = require('./compact');
   const sayCompact = (l) => { try { process.stderr.write(`${l}\n`); } catch { /* önemsiz */ } };
   if (top && !session.noAutoCompact) { // bağlam eşiği aşılmışsa tur başında sıkıştır (geçmiş yedeklenir, hata turu bozmaz)
@@ -111,10 +141,25 @@ async function runTurn(session, userContent, signal) {
   const startLen = session.messages.length;
   if (session.canSpawn !== false || !session.agentName) session.cpDone = false; // her tur için yeni git checkpoint hakkı
   session.messages.push({ role: 'user', content: userContent });
+  if (top) require('./rewind').mark(session, startLen, userContent); // /rewind işareti (checkpoint'ten önce: cp numarası)
   if (!session.agentName) require('./checkpoints').store().beginTurn(session.sessionId, typeof userContent === 'string' ? userContent : (userContent.find((p) => p.type === 'text') || {}).text || '');
   if (top) { hooks.setSession(session.sessionId); try { require('./sessions').save(session); } catch { /* önemsiz */ } } // oturum dosyası ilk olaydan önce diskte olsun
   if (top) hooks.promptSubmitted(typeof userContent === 'string' ? userContent : (userContent.find((p) => p.type === 'text') || {}).text || '');
   if (top) hooks.plan(session.todos || []); // bekleyen todo'lar yeni turda Orca listesinde yeniden görünsün
+
+  // doğrulama kapısı + zayıf model iskelesi (yalnızca ana oturum; ayarla kapatılabilir)
+  const verifyMod = require('./verify');
+  const ver = top ? verifyMod.settings(session) : { enabled: false };
+  const taskText = typeof rawContent === 'string' ? rawContent : ((rawContent.find((p) => p.type === 'text') || {}).text || '');
+  const scaffolded = top && require('./models').scaffoldFor(session.cfg, session.model);
+  if (top) applyScaffold(session, scaffolded);
+  if (top) { try { require('./output-styles').apply(session); } catch { /* stil hatası turu bozmasın */ } } // [STYLE] bloğu (iskeleden sonra)
+  let dirty = false; // bu turda dosya yazıldı ve testler henüz geçmedi
+  let wrote = false;
+  let verifyTries = 0;
+  let reqChecked = false;
+  let verifyFailed = null;
+  let stopTries = 0; // Stop kancası geri bildirim sayacı (doğrulama sayacından bağımsız)
 
   const totals = { tokens: 0, ms: 0, keyIndex: -1, model: session.model, toolCalls: 0 };
   const t0 = Date.now();
@@ -148,6 +193,7 @@ async function runTurn(session, userContent, signal) {
       totals.keyIndex = call.index;
       totals.model = call.model;
       if (res.usage?.total_tokens) totals.tokens += res.usage.total_tokens;
+      try { require('./cost').record(session, call); } catch { /* /cost için kayıt; hata turu bozmasın */ }
       finalText = res.content;
       B.onResponse(bud, res, session.messages, (m) => out.warn(m));
 
@@ -165,6 +211,48 @@ async function runTurn(session, userContent, signal) {
           nagged = true;
           session.messages.push({ role: 'user', content: P.todoReminder(open, { language: getLang() }) });
           continue;
+        }
+        if (top && ver.enabled && step < maxSteps - 1) {
+          // 1) test doğrulama kapısı: komut yoksa sessizce atlanır
+          if (dirty) {
+            const det = verifyMod.detect(session.cwd, { taskText, command: ver.command });
+            if (det) {
+              out.tool('verify', det.cmd);
+              out.waiting(true, t('running', 'verify'));
+              let v;
+              try { v = await verifyMod.run(session, det.cmd, ver.timeoutSec); } finally { out.waiting(false); }
+              if (v.status === 'pass') {
+                dirty = false;
+                out.toolResult(true, 'tests passed', { summary: 'tests passed' });
+              } else if (v.status === 'fail') {
+                out.toolResult(false, v.output, { summary: `tests failed (exit ${v.code})`, body: verifyMod.summarize(v.output, 600) });
+                if (verifyTries < ver.retries) {
+                  verifyTries++;
+                  session.messages.push({ role: 'user', content: P.verifyFailure({ command: det.cmd, code: v.code, output: verifyMod.summarize(v.output), attempt: verifyTries, max: ver.retries, language: getLang() }) });
+                  continue;
+                }
+                verifyFailed = { command: det.cmd, attempts: verifyTries, output: v.output };
+              }
+            }
+          }
+          // 2) şartname kontrol listesi: gereksinim başına kanıt iste (tur başına bir kez)
+          if (wrote && !reqChecked && !verifyFailed) {
+            reqChecked = true;
+            const reqs = P.requirementsFrom(verifyMod.taskSource(session.cwd, taskText));
+            if (reqs.length >= 3) {
+              session.messages.push({ role: 'user', content: P.requirementsCheck(reqs, { language: getLang() }) });
+              continue;
+            }
+          }
+        }
+        // 3) Stop kancaları (doğrulama kapısından sonra): çıkış 2 → stderr modele döner, tur sürer (turda en çok 3 kez)
+        if (top && session.settings && stopTries < MAX_STOP_HOOKS && step < maxSteps - 1) {
+          const sr = await userHooks.fire(session.settings, 'Stop', { session_id: session.sessionId, stop_hook_active: stopTries > 0, last_assistant_message: res.content || '' }, session.cwd);
+          if (sr.block) {
+            stopTries++;
+            session.messages.push({ role: 'user', content: `[Stop hook] ${sr.message}` });
+            continue;
+          }
         }
         break;
       }
@@ -209,6 +297,13 @@ async function runTurn(session, userContent, signal) {
           out.waiting(true, t('running', tc.name));
           let r;
           try { r = await execute(tc, session); } finally { out.waiting(false); }
+          if (r.ok && (tc.name === 'write_file' || tc.name === 'edit_file')) {
+            dirty = true; wrote = true;
+            if (scaffolded && ver.enabled) { // her dosya yazımından sonra testi koştur, sonucu aracın çıktısına ekle
+              const note = await verifyMod.autoTest(session, tc, { taskText, ver });
+              if (note) r.output = `${r.output}\n\n${note}`;
+            }
+          }
           record(tc, r);
         }
       }
@@ -230,9 +325,17 @@ async function runTurn(session, userContent, signal) {
       session.messages.push({ role: 'assistant', content: P.budgetNotice({ kind: 'assistant', reason: budgetStop }) });
     } else finalText = `${finalText || ''}\n${P.budgetNotice({ kind: 'subagent', reason: budgetStop })}`.trim();
   }
+  if (verifyFailed) { // deneme hakkı bitti ve testler hâlâ geçmiyor: durumu açıkça bildir
+    const note = P.verifyGaveUp({ command: verifyFailed.command, attempts: verifyFailed.attempts, output: verifyFailed.output, language: getLang() });
+    out.warn(note);
+    finalText = `${finalText || ''}\n\n${note}`.trim();
+    const last = session.messages[session.messages.length - 1];
+    if (last && last.role === 'assistant') last.content = `${last.content || ''}\n\n${note}`.trim();
+  }
   totals.ms = Date.now() - t0;
+  if (top) { try { require('./cost').noteTurn(session, { ms: totals.ms, verifyTries, verifyFailed: !!verifyFailed }); } catch { /* önemsiz */ } }
   if (top) hooks.turnDone(finalText);
-  return { content: finalText, ...totals, ...(budgetExceeded ? { budgetExceeded } : {}) };
+  return { content: finalText, ...totals, ...(budgetExceeded ? { budgetExceeded } : {}), ...(verifyFailed ? { verifyFailed: true } : {}) };
 }
 
 module.exports = { runTurn };

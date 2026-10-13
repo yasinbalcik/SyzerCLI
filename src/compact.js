@@ -220,6 +220,12 @@ async function compactSession(session, { mode = 'auto', hint = '', win, say, thr
     threshold = resolveThreshold({ cfg: session.cfg || {}, win: w });
     session.compactThreshold = threshold;
   }
+  if (session.settings && !session.agentName) { // PreCompact kancası (engellemez; hata sıkıştırmayı bozmaz)
+    try {
+      const trig = mode === 'auto' || mode === 'trim' ? 'auto' : 'manual';
+      await require('./hooks').fire(session.settings, 'PreCompact', { session_id: session.sessionId, trigger: trig, custom_instructions: hint }, session.cwd, trig);
+    } catch { /* önemsiz */ }
+  }
   const rt = require('./routing');
   const cheap = session.cfg && ((rt.explicit('summarize', session.cfg) || {}).model || session.cfg.subagentModel); // routing.summarize > subagentModel > oturum modeli
   const deps = {

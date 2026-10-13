@@ -20,7 +20,11 @@ const GLOBAL_DEFAULTS = {
   setupDone: false, // ilk kurulum sihirbazı tamamlandı mı
   autoUpdate: true, // açılışta GitHub'dan güncelleme kontrolü
   budget: { tokens: null, turns: null, minutes: null }, // görev başına bütçe koruması (null = kapalı)
-  compact: { threshold: null }, // otomatik bağlam sıkıştırma eşiği: token | "70%" | "off" (null = pencerenin %70'i, bilinmiyorsa 60k)
+  verify: true, // tur bitişinde test doğrulama kapısı: false | { enabled, retries (3), command, timeoutSec (120) }; ortam: SYZER_VERIFY=off
+  scaffold: 'auto', // zayıf/küçük model iskelesi: auto | on | off; ortam: SYZER_SCAFFOLD
+  outputStyle: 'default', // çıktı stili: default | concise | explanatory | <kullanıcı/plugin stili>; /output-style
+  memory: true, // kalıcı otomatik hafıza (memory_save/memory_forget + bağlam dizini); false kapatır; ortam: SYZER_MEMORY=off
+  compact: { threshold: null },// otomatik bağlam sıkıştırma eşiği: token | "70%" | "off" (null = pencerenin %70'i, bilinmiyorsa 60k)
 };
 
 // Her sağlayıcı için ayrı tutulan ayarlar (model, effort, yedek modeller, subagent modeli)

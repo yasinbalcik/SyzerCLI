@@ -48,6 +48,7 @@ function makeSub(parent, agent, label, id, run, modelOverride, routedModel) {
     ctx: parent.ctx,
     skills: parent.skills,
     agentName: agent.name,
+    parentSession: parent, // /cost: alt ajan kullanımı ana oturumun defterine yazılır
     model: modelOverride || agent.model || routedModel || cfg.subagentModel || parent.model, // routedModel: routing.<rol> (açıkça ayarlıysa)
     effort: cfg.subagentEffort || parent.effort,
     useTools: parent.useTools,
@@ -106,6 +107,8 @@ async function spawn(parent, call, signal) {
   const run = { id, label, agent: agent.name, prompt: a.prompt, steps: [], report: '', live: '', chars: 0, ok: false };
   parent.runs = parent.runs || [];
   parent.runs.push(run);
+  let wt = null; // isolation: "worktree" ise açılan worktree
+  let wtInfo = null; // bitişte korunan worktree bilgisi
   try {
     hooks.subagentStart({ id: `syz-${process.pid}-${id}`, kind: agent.name, description: a.description || head(a.prompt, 120) });
     const route = require('./routing').subagentRoute(agent, a.read_only === true, parent.cfg);
@@ -115,12 +118,32 @@ async function spawn(parent, call, signal) {
     if (a.max_steps) sub.maxSteps = Math.max(1, Math.min(40, a.max_steps | 0)); // orkestra yeniden denemesi daha geniş bütçe verir
     run.model = sub.model;
     po.agentModel && po.agentModel(id, sub.model);
-    const r = await limited(parent.cfg.subagentConcurrency || 3, () => {
+    const r = await limited(parent.cfg.subagentConcurrency || 3, async () => {
       po.agentRun && po.agentRun(id);
       sub.spread = gate.active > 1 ? id : null; // birden fazla ajan aynı anda çalışıyorsa key'lere dağıt
-      return runTurn(sub, a.prompt, signal);
+      let prompt = a.prompt;
+      if (a.isolation === 'worktree' && !a.read_only) {
+        const w = require('./worktree').create(parent.cwd);
+        if (w.ok) {
+          wt = w; sub.cwd = w.cwd;
+          prompt = `[Isolated git worktree] Your working directory is ${w.cwd} (branch ${w.branch}, started from HEAD). Work only inside it; use relative paths. Your changes are not merged automatically.
+
+${a.prompt}`;
+        } else po.warn(`[${label}] worktree isolation unavailable (${w.reason}); running in the normal working tree`);
+      }
+      try { return await runTurn(sub, prompt, signal); } finally { if (wt) wtInfo = require('./worktree').finish(wt); }
     }, signal);
-    const report = (r.content || '').trim() || '(no output)';
+    let report = (r.content || '').trim() || '(no output)';
+    if (parent.settings) { // SubagentStop kancası (engellemez; stdout/stderr rapora not olarak eklenir)
+      try {
+        const h = await require('./hooks').fire(parent.settings, 'SubagentStop', { session_id: parent.sessionId, agent_type: agent.name, agent_description: a.description || '' }, parent.cwd, agent.name);
+        const note = h.context || h.message;
+        if (note) report = `${report}\n\n[SubagentStop hook] ${note}`;
+      } catch { /* önemsiz */ }
+    }
+    if (wtInfo && wtInfo.kept) report = `${report}
+
+${require('./worktree').note(wtInfo)}`;
     Object.assign(run, { report, ok: true, tokens: r.tokens, calls: r.toolCalls, model: sub.model });
     const secs = ((Date.now() - t0) / 1000).toFixed(1);
     const model = sub.model.split('/').pop().replace(':free', '');
@@ -134,9 +157,10 @@ async function spawn(parent, call, signal) {
       ui: { summary: `${t('sub_summary', agent.name, r.toolCalls, r.tokens.toLocaleString(), secs)} · ${model}`, body },
     };
   } catch (err) {
-    if (err.name === 'AbortError') { run.aborted = true; throw err; }
-    run.report = `failed: ${err.message}`;
-    return { ...P.failure('TOOL_FAILED', `subagent failed: ${err.message}`, undefined, { model: run.model || null, routedRole }), ui: { summary: `${agent.name}: ${err.message}` } };
+    if (err.name === 'AbortError') { run.aborted = true; if (wtInfo && wtInfo.kept) run.report = require('./worktree').note(wtInfo); throw err; }
+    const wtNote = wtInfo && wtInfo.kept ? '\n' + require('./worktree').note(wtInfo) : '';
+    run.report = `failed: ${err.message}${wtNote}`;
+    return { ...P.failure('TOOL_FAILED', `subagent failed: ${err.message}${wtNote}`, undefined, { model: run.model || null, routedRole }), ui: { summary: `${agent.name}: ${err.message}` } };
   } finally {
     run.secs = ((Date.now() - t0) / 1000).toFixed(1);
     hooks.subagentStop({ id: `syz-${process.pid}-${id}` });

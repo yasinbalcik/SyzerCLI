@@ -14,7 +14,7 @@ function runCommand(command, input, cwd, timeoutSec) {
   return new Promise((resolve) => {
     const isWin = process.platform === 'win32';
     const child = isWin
-      ? spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { cwd })
+      ? spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `${command}\nif ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }`], { cwd }) // -Command yerel çıkış kodunu (2 = engelle) aktarmaz
       : spawn('sh', ['-c', command], { cwd });
     let stdout = '';
     let stderr = '';
@@ -27,9 +27,54 @@ function runCommand(command, input, cwd, timeoutSec) {
   });
 }
 
+// SYZER_HOOKS=off|0|false → tüm kancalar kapalı
+function disabled() {
+  return /^(off|0|false|no)$/i.test(String(process.env.SYZER_HOOKS || '').trim());
+}
+
+const EVENTS = ['PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Stop', 'SessionStart', 'PreCompact', 'SubagentStop'];
+
+function listFor(settings, event) {
+  const l = settings && settings.hooks && settings.hooks[event];
+  return Array.isArray(l) ? l : [];
+}
+
+// Araç dışı olaylar için matcher: verilen değere (örn. PreCompact: manual|auto, SubagentStop: ajan adı) karşı regex.
+// Değer verilmediyse matcher yok sayılır.
+function matchesValue(matcher, value) {
+  if (!matcher || matcher === '*' || value === undefined || value === null) return true;
+  try { return new RegExp(`^(?:${matcher})$`, 'i').test(String(value)); }
+  catch { return String(value) === matcher; }
+}
+
+// Genel olay çalıştırıcı. stdout (çıkış 0) → bağlam; çıkış 2 → block + stderr mesajı.
+// Dönüş: { block, message, context }. Kanca yoksa/kapalıysa sıfır maliyet.
+async function fire(settings, event, payload, cwd, matchValue) {
+  const none = { block: false, message: '', context: '' };
+  if (disabled()) return none;
+  const list = listFor(settings, event);
+  if (!list.length) return none;
+  const ctx = [];
+  let block = false;
+  let message = '';
+  for (const h of list) {
+    if (!matchesValue(h.matcher, matchValue)) continue;
+    const r = await runCommand(h.command, { ...(payload || {}), hook_event_name: event, cwd }, cwd, h.timeout || 30);
+    if (r.code === 2) {
+      block = true;
+      message = (r.stderr || r.stdout || 'blocked by hook').trim().slice(0, 1500);
+      break;
+    }
+    const out = String(r.stdout || '').trim();
+    if (r.code === 0 && out) ctx.push(out.slice(0, 4000));
+  }
+  return { block, message, context: ctx.join('\n') };
+}
+
 // PreToolUse: çıkış kodu 2 → engelle (stderr modele iletilir). Dönüş: { block, message }
 async function pre(settings, name, args, cwd) {
-  for (const h of (settings && settings.hooks.PreToolUse) || []) {
+  if (disabled()) return { block: false };
+  for (const h of listFor(settings, 'PreToolUse')) {
     if (!matches(h.matcher, name)) continue;
     const r = await runCommand(h.command, { hook_event_name: 'PreToolUse', tool_name: CLAUDE_NAME[name] || name, tool_input: args, cwd }, cwd, h.timeout);
     if (r.code === 2) return { block: true, message: (r.stderr || r.stdout || 'blocked by hook').trim().slice(0, 500) };
@@ -40,7 +85,8 @@ async function pre(settings, name, args, cwd) {
 // PostToolUse: stdout/stderr modele geri bildirim olarak eklenir
 async function post(settings, name, args, result, cwd) {
   const notes = [];
-  for (const h of (settings && settings.hooks.PostToolUse) || []) {
+  if (disabled()) return '';
+  for (const h of listFor(settings, 'PostToolUse')) {
     if (!matches(h.matcher, name)) continue;
     const r = await runCommand(h.command, {
       hook_event_name: 'PostToolUse', tool_name: CLAUDE_NAME[name] || name, tool_input: args,
@@ -52,4 +98,4 @@ async function post(settings, name, args, result, cwd) {
   return notes.join('\n');
 }
 
-module.exports = { pre, post };
+module.exports = { pre, post, fire, disabled, EVENTS };

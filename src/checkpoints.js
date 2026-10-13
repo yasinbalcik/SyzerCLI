@@ -88,6 +88,7 @@ function create({ dir = path.join(config.DIR, 'checkpoints'), fsImpl = fs, now =
   }
 
   const list = (sid) => load(sid).turns.slice();
+  const next = (sid) => load(sid).next || 1; // bir sonraki checkpoint'in numarası (rewind işaretleri için)
 
   // Son n checkpoint'i (yeniden eskiye) geri yükler. Çakışmada force yoksa durur.
   function undo(sid, n = 1, { force = false } = {}) {
@@ -126,7 +127,7 @@ function create({ dir = path.join(config.DIR, 'checkpoints'), fsImpl = fs, now =
     return res;
   }
 
-  return { beginTurn, record, wrote, list, undo, dir };
+  return { beginTurn, record, wrote, list, next, undo, dir };
 }
 
 let shared = null;

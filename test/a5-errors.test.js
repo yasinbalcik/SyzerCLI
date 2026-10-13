@@ -39,8 +39,10 @@ test('A5 major: MCP and shell failures are one standard ERR_ line', async () => 
   assert.doesNotMatch(mcp.output, /\n/);
 
   const shell = await execute({ name: 'run_command', arguments: JSON.stringify({ command: 'Write-Output first; Write-Output second; exit 1' }) }, session());
-  assert.match(shell.output, /^ERR_TOOL_FAILED:/);
-  assert.doesNotMatch(shell.output, /\n/);
+  // Başlık satırı standart tek ERR_ satırı kalır; komutun çıktısı (traceback/test hatası) modele ALT satırlarda tam gelir
+  assert.match(shell.output, /^ERR_TOOL_FAILED: command exited with code 1\n/);
+  assert.doesNotMatch(shell.output.split('\n')[0], /first|second/);
+  assert.match(shell.output, /first\s+second/);
 });
 
 test('A5 minor: leadSystem defaults never render undefined or object placeholders', () => {

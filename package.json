@@ -1,6 +1,6 @@
 {
   "name": "syzercli",
-  "version": "3.30.0",
+  "version": "3.31.0",
   "description": "SyzerCLI — OpenRouter ve NVIDIA için çoklu API key havuzlu terminal ajanı",
   "bin": {
     "syzer": "bin/syzer.js",
@@ -13,7 +13,7 @@
   },
   "license": "MIT",
   "scripts": {
-    "test": "node --test test/core.test.js test/todo.test.js test/click-report.test.js test/orchestra.test.js test/bridge.test.js test/agent-tree.test.js test/dock-tree.test.js test/api-stall.test.js test/logo3d.test.js test/splash.test.js test/logo-cmd.test.js test/keys-json.test.js test/keys-quota.test.js test/key-health.test.js test/checkpoints.test.js test/budget.test.js test/pool.test.js test/plan-hook.test.js test/ui-head.test.js test/headless.test.js test/compact.test.js test/routing.test.js test/prompts.test.js test/prompts-golden.test.js test/a5-errors.test.js test/web-ui.test.js test/atomic-json.test.js test/permissions.test.js test/tools.test.js test/server-security.test.js test/orca-workers.test.js test/orca-logs.test.js test/doctor-orca.test.js test/proc.test.js test/mcp.test.js test/subagents-abort.test.js test/complete.test.js test/quota-guide.test.js test/resume-filter.test.js test/folder-pick.test.js test/skill-i18n.test.js",
+    "test": "node --test test/core.test.js test/todo.test.js test/click-report.test.js test/orchestra.test.js test/bridge.test.js test/agent-tree.test.js test/dock-tree.test.js test/api-stall.test.js test/logo3d.test.js test/splash.test.js test/logo-cmd.test.js test/keys-json.test.js test/keys-quota.test.js test/key-health.test.js test/checkpoints.test.js test/budget.test.js test/pool.test.js test/plan-hook.test.js test/ui-head.test.js test/headless.test.js test/compact.test.js test/routing.test.js test/prompts.test.js test/prompts-golden.test.js test/a5-errors.test.js test/web-ui.test.js test/atomic-json.test.js test/permissions.test.js test/tools.test.js test/server-security.test.js test/orca-workers.test.js test/orca-logs.test.js test/doctor-orca.test.js test/proc.test.js test/mcp.test.js test/subagents-abort.test.js test/complete.test.js test/quota-guide.test.js test/resume-filter.test.js test/folder-pick.test.js test/skill-i18n.test.js test/custom-provider.test.js test/verify-gate.test.js test/weak-model-bench.test.js test/hooks-events.test.js test/memory.test.js test/rewind.test.js test/worktree-isolation.test.js test/output-styles.test.js test/statusline.test.js test/plugins.test.js test/permissions-depth.test.js test/cost.test.js",
     "pack": "node scripts/pack.js",
     "build:exe": "node scripts/build-exe.js"
   },

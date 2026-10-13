@@ -11,6 +11,8 @@ const { LIMITS } = require('./limits');
 const MAX_FILE = LIMITS.instructionFile;
 const readSafe = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } };
 const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+// Etkin pluginlerin commands/skills/agents klasörleri (en düşük öncelik; kapalıysa boş)
+const pluginRoots = (kind) => { try { return require('./plugins').roots(kind); } catch { return []; } };
 
 // --- Talimat dosyaları (CLAUDE.md, AGENTS.md, OPENROUTER.md) ---
 
@@ -73,6 +75,7 @@ function findSkills(cwd) {
     path.join(cwd, '.claude', 'skills'),
     path.join(config.DIR, 'skills'),
     path.join(os.homedir(), '.claude', 'skills'),
+    ...pluginRoots('skills'),
   ];
   const skills = new Map();
   for (const root of roots) {
@@ -97,6 +100,7 @@ function findCommands(cwd) {
     path.join(cwd, '.claude', 'commands'),
     path.join(config.DIR, 'commands'),
     path.join(os.homedir(), '.claude', 'commands'),
+    ...pluginRoots('commands'),
   ];
   const cmds = new Map();
   for (const root of roots) {
@@ -155,6 +159,7 @@ function findAgents(cwd) {
     path.join(cwd, '.claude', 'agents'),
     path.join(config.DIR, 'agents'),
     path.join(os.homedir(), '.claude', 'agents'),
+    ...pluginRoots('agents'),
   ];
   const custom = new Map();
   for (const root of roots) {
@@ -197,7 +202,19 @@ function buildContext(cwd) {
   const commands = findCommands(cwd);
   const agents = findAgents(cwd);
 
-  const input = { cwd, platform: process.platform, language: getLang(), skills, instructionFiles: files, agents };
+  // Kalıcı hafıza dizini yalnızca ana oturum sistem istemine girer (alt ajanlar ctx.files kullanır, burası değişmez)
+  const leadFiles = [...files];
+  try {
+    const mem = require('./memory');
+    let raw = null;
+    try { raw = JSON.parse(fs.readFileSync(config.FILE, 'utf8')); } catch { /* config yok: varsayılan açık */ }
+    if (mem.enabled(raw)) {
+      const idx = mem.loadIndex(cwd);
+      if (idx) leadFiles.push({ path: 'memory/MEMORY.md', text: idx });
+    }
+  } catch { /* hafıza bağlamı bozmasın */ }
+
+  const input = { cwd, platform: process.platform, language: getLang(), skills, instructionFiles: leadFiles, agents };
   return { system: P.leadSystem(input), header: P.base(input), files, skills, commands, agents };
 }
 

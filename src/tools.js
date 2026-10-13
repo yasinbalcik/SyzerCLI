@@ -70,7 +70,15 @@ const DEFS = [
     },
   }, ['todos']),
   fn('use_skill', P.toolDescription('use_skill'), { name: { type: 'string' } }, ['name']),
+  fn('memory_save', P.toolDescription('memory_save'), {
+    name: { type: 'string', description: 'short slug: letters, digits, - and _ (e.g. prefers-pnpm)' },
+    description: { type: 'string', description: 'one-line summary shown in the memory index' },
+    type: { type: 'string', enum: ['user', 'feedback', 'project', 'reference'] },
+    body: { type: 'string', description: 'the fact itself (markdown, concise)' },
+  }, ['name', 'description', 'body']),
+  fn('memory_forget', P.toolDescription('memory_forget'), { name: { type: 'string' } }, ['name']),
 ];
+const MEMORY_TOOLS = new Set(['memory_save', 'memory_forget']);
 
 const SPAWN_DEF = fn(
   'spawn_agent',
@@ -79,6 +87,7 @@ const SPAWN_DEF = fn(
     agent: { type: 'string', description: 'agent name (default: general)' },
     description: { type: 'string', description: 'short 3-6 word label' },
     prompt: { type: 'string', description: 'complete, self-contained task: goal, relevant file paths, constraints and the exact output format wanted; the subagent sees nothing else' },
+    isolation: { type: 'string', enum: ['worktree'], description: 'optional: "worktree" runs the subagent in its own temporary git worktree/branch so parallel edits cannot collide; unchanged worktrees are deleted, changed ones are kept (NOT merged) and reported' },
   },
   ['prompt'],
 );
@@ -104,6 +113,8 @@ const RUN_PLAN_DEF = fn(
 // Oturumun görebileceği araçlar: alt ajanlar kısıtlı liste alır, ana ajan spawn_agent ve MCP araçlarını da görür
 function toolDefsFor(session) {
   let defs = DEFS;
+  // hafıza araçları yalnızca ana oturumda ve hafıza açıkken
+  if (session.agentName || !require('./memory').enabled(session.cfg)) defs = defs.filter((d) => !MEMORY_TOOLS.has(d.function.name));
   if (session.allowedTools) defs = defs.filter((d) => session.allowedTools.has(d.function.name));
   if (session.mcp && session.mcp.defs.length && (!session.allowedTools || session.allowedTools.has('mcp'))) defs = [...defs, ...session.mcp.defs];
   if (!session.canSpawn) return defs;
@@ -300,6 +311,7 @@ function describe(name, a, cwd) {
     case 'search_files': return `${a.pattern}${a.path ? ` in ${a.path}` : ''}`;
     case 'find_files': return a.pattern;
     case 'use_skill': return a.name;
+    case 'memory_save': case 'memory_forget': return a.name;
     case 'web_fetch': return a.url;
     case 'web_search': return a.query;
     case 'bg_output': case 'bg_stop': return `#${a.id}`;
@@ -414,7 +426,13 @@ async function execute(call, session) {
   const pre = await hooks.pre(session.settings, name, a, cwd);
   if (pre.block) return P.failure('TOOL_FAILED', t('hook_blocked', pre.message));
 
-  const result = await runTool(name, a, call, session, verdict === 'allow');
+  const result = await runTool(name, a, call, session, verdict === 'allow', verdict === 'ask');
+
+  // Kendi kodundaki hata (AttributeError/ImportError/NameError…): modele düzeltme ipucu ekle
+  if ((name === 'run_command' || name === 'bg_output') && typeof result.output === 'string') {
+    const hint = P.tracebackHint(result.output, { language: require('./i18n').getLang() });
+    if (hint) result.output = `${result.output}\n\n${hint}`;
+  }
 
   // 3) PostToolUse hook'ları
   if (result.ok) {
@@ -428,7 +446,7 @@ async function execute(call, session) {
   return P.formatToolResult(result);
 }
 
-async function runTool(name, a, call, session, allowedByRule) {
+async function runTool(name, a, call, session, allowedByRule, forceAsk = false) {
   const cwd = session.cwd;
   const abs = (p) => path.resolve(cwd, p || '.');
   const isMcp = name.startsWith('mcp__');
@@ -439,7 +457,7 @@ async function runTool(name, a, call, session, allowedByRule) {
     if (MUTATING.has(name) || isMcp) {
       if (session.plan) return P.failure('TOOL_FAILED', t('plan_block'));
       if (session.perm === 'readonly') return P.failure('TOOL_FAILED', t('readonly_block'));
-      const outside = FILE_WRITE.has(name) && perms.isOutside(cwd, a.path);
+      const outside = FILE_WRITE.has(name) && perms.isOutside(cwd, a.path, undefined, session.settings && session.settings.additionalDirectories);
       if (outside && session.perm === 'auto' && session.canAsk === false) {
         return P.failure('E_OUTSIDE_WORKSPACE', 'path is outside the workspace');
       }
@@ -448,7 +466,8 @@ async function runTool(name, a, call, session, allowedByRule) {
         if (change.err) return P.failure(change.err.code, change.err.detail, change.err.hint);
         ops = diffLines(change.before, change.after);
       }
-      const needAsk = !allowedByRule && (session.perm === 'ask' || (session.perm === 'auto' && outside && session.canAsk));
+      // `ask` kuralı auto modda bile onay ister (allow'dan önce değerlendirilir)
+      const needAsk = forceAsk || (!allowedByRule && (session.perm === 'ask' || (session.perm === 'auto' && outside && session.canAsk)));
       if (needAsk) {
         let preview = '';
         if (ops) preview = renderDiff(ops, { maxRows: change.existed ? 30 : 15, indent: 2 });
@@ -463,6 +482,12 @@ async function runTool(name, a, call, session, allowedByRule) {
           settingsMod.writeRule(cwd, 'allow', r);
           session.settings.allow.push(r);
           session.out.notice && session.out.notice(t('rule_added', 'allow', r));
+        } else if (verdict === 'session') { // "bu oturum için": kalıcı yazmadan yalnızca bellekteki kurallara ekle
+          const r = perms.suggestRule(name, a);
+          if (session.settings) {
+            const al = (session.settings.allow ||= []);
+            if (!al.includes(r)) al.push(r);
+          }
         } else if (verdict !== 'yes') return P.failure('TOOL_FAILED', t('denied'));
       }
       // git checkpoint: turdaki ilk değişiklikten önce
@@ -536,7 +561,7 @@ async function runTool(name, a, call, session, allowedByRule) {
         const lines = out.trim().split('\n').filter((l, i, all) => l.trim() || (i > 0 && i < all.length - 1));
         const shown = lines.slice(0, 8).map((l) => C.gray('    ' + l.slice(0, 160)));
         if (lines.length > 8) shown.push(C.gray('    ' + t('sum_lines', lines.length - 8)));
-        return { ok: code === 0, output: code === 0 ? clip(`${out.trim()}\n[exit ${code}]`) : P.error('TOOL_FAILED', `command exited with code ${code}${out.trim() ? `: ${out.trim()}` : ''}`), ui: { summary: `exit ${code}`, body: shown.join('\n') } };
+        return { ok: code === 0, output: code === 0 ? clip(`${out.trim()}\n[exit ${code}]`) : `${P.error('TOOL_FAILED', `command exited with code ${code}`)}${out.trim() ? `\n${clip(out.trim())}` : ''}`, ui: { summary: `exit ${code}`, body: shown.join('\n') } };
       }
       case 'run_background': {
         const e = startBackground(session, a.command);
@@ -587,6 +612,24 @@ async function runTool(name, a, call, session, allowedByRule) {
         const s = (session.skills || []).find((x) => x.name === a.name);
         if (!s) return P.failure('TOOL_FAILED', `unknown skill: ${a.name}`);
         return { ok: true, output: clip(`Skill file: ${s.file}\n\n${loadBody(s.file)}`), ui: { summary: s.name } };
+      }
+      case 'memory_save':
+      case 'memory_forget': {
+        const mem = require('./memory');
+        if (session.agentName || !mem.enabled(session.cfg)) return P.failure('TOOL_FAILED', 'memory is disabled');
+        if (session.perm === 'readonly') return P.failure('TOOL_FAILED', t('readonly_block'));
+        try {
+          if (name === 'memory_save') {
+            const r = mem.save(cwd, a);
+            return { ok: true, output: `${r.created ? 'Saved' : 'Updated'} memory "${r.name}"`, ui: { summary: `${r.created ? 'saved' : 'updated'} ${r.name}` } };
+          }
+          const gone = mem.forget(cwd, a.name);
+          if (!gone) return P.failure('TOOL_FAILED', `no such memory: ${a.name}`);
+          return { ok: true, output: `Forgot memory "${String(a.name).trim().toLowerCase()}"`, ui: { summary: `forgot ${a.name}` } };
+        } catch (e) {
+          if (e instanceof mem.MemoryError) return P.failure('TOOL_FAILED', e.message);
+          throw e;
+        }
       }
       default:
         return P.failure('TOOL_FAILED', `unknown tool: ${name}`);

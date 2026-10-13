@@ -146,10 +146,60 @@ async function chatStream({ key, model, messages, tools, effort, signal, onText,
     return finish();
 
     function finish() {
-      const toolCalls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${Date.now()}_${i}` }));
+      let toolCalls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${Date.now()}_${i}` }));
+      if (!toolCalls.length && tools && tools.length) {
+        const parsed = textToolCalls(content, tools, { withRest: true });
+        if (parsed) { toolCalls = parsed.calls; content = parsed.rest; }
+      }
       return { content, toolCalls, usage };
     }
   }
+}
+
+// Bazı yerel modeller (Qwen2.5-Coder/Ollama vb.) araç çağrısını tool_calls yerine metin olarak yazar:
+// {"name": "...", "arguments": {...}} — öncesinde açıklama metniyle, dizi, ```json``` ya da <tool_call> içinde.
+// Metindeki bilinen araçlara yapılan çağrılar gerçek çağrıya çevrilir; kalan metin içerik olarak döner.
+function jsonSpans(txt) {
+  const spans = [];
+  for (let i = 0; i < txt.length; i++) {
+    if (txt[i] !== '{' && txt[i] !== '[') continue;
+    let depth = 0, str = false, esc = false, end = -1;
+    for (let j = i; j < txt.length; j++) {
+      const ch = txt[j];
+      if (str) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') str = false; continue; }
+      if (ch === '"') str = true;
+      else if (ch === '{' || ch === '[') depth++;
+      else if (ch === '}' || ch === ']') { depth--; if (!depth) { end = j; break; } }
+    }
+    if (end < 0) break;
+    try { spans.push({ start: i, end: end + 1, value: JSON.parse(txt.slice(i, end + 1)) }); i = end; } catch { /* JSON değil, ilerle */ }
+  }
+  return spans;
+}
+
+function textToolCalls(content, tools, { withRest = false } = {}) {
+  const txt = String(content || '');
+  if (!/"name"\s*:/.test(txt)) return null;
+  const names = new Set(tools.map((x) => x.function && x.function.name));
+  const out = [];
+  let rest = txt;
+  for (const s of jsonSpans(txt).reverse()) {
+    const items = Array.isArray(s.value) ? s.value : [s.value];
+    const calls = [];
+    for (const it of items) {
+      const fn = it && (it.function || it);
+      if (!fn || !names.has(fn.name)) { calls.length = 0; break; }
+      const args = fn.arguments !== undefined ? fn.arguments : fn.parameters !== undefined ? fn.parameters : {};
+      calls.push({ name: fn.name, arguments: typeof args === 'string' ? args : JSON.stringify(args) });
+    }
+    if (!calls.length) continue;
+    out.unshift(...calls);
+    rest = rest.slice(0, s.start) + rest.slice(s.end);
+  }
+  if (!out.length) return null;
+  const calls = out.map((c, i) => ({ id: `call_${Date.now()}_${i}`, ...c }));
+  if (!withRest) return calls;
+  return { calls, rest: rest.replace(/<\/?tool_(call|response)>/g, '').replace(/```(?:json)?\s*```/g, '').trim() };
 }
 
 async function getJson(path, key, timeoutMs = 15000, provider = providers.current()) {
@@ -162,6 +212,7 @@ async function getJson(path, key, timeoutMs = 15000, provider = providers.curren
 // Key canlı doğrulaması. Geçersizse KeyError fırlatır; doğrulanamayan geçici durumlarda { ok: true, note } döner.
 async function validateKey(provider, key) {
   if (provider.hasUsageApi) { await getJson('/key', key, 15000, provider); return { ok: true }; }
+  if (provider.custom) { await getJson('/models', provider.keyless ? null : key, 15000, provider); return { ok: true }; } // erişilebilir ve key kabul ediliyor mu
   // NVIDIA: /models anahtarı denetlemez, bu yüzden 1 token'lık gerçek bir çağrı yapılır
   const res = await fetch(`${provider.base}/chat/completions`, {
     method: 'POST',
@@ -175,4 +226,4 @@ async function validateKey(provider, key) {
   return { ok: true, note: `${res.status} ${err.message}`.slice(0, 80) }; // 429/5xx/404: anahtar reddedilmedi
 }
 
-module.exports = { KeyError, errorFrom, chatStream, getJson, validateKey };
+module.exports = { KeyError, errorFrom, chatStream, getJson, validateKey, textToolCalls };

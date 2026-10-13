@@ -169,6 +169,91 @@ function dynamic({ skills, instructionFiles, todo, dependencies, retry, budget, 
   return parts.length ? `[DYNAMIC]\n${parts.join('\n\n')}` : '';
 }
 
+// ---------- doğrulama kapısı, şartname kontrol listesi, zayıf model iskelesi, traceback ipucu ----------
+
+const AGAIN = {
+  en: 'Do not mention this reminder to the user.',
+  tr: 'Bu hatırlatmadan kullanıcıya söz etme.',
+};
+
+// Test komutu başarısız: çıktı özeti modele geri verilir; tur devam eder
+function verifyFailure({ command, code, output, attempt, max, language } = {}) {
+  const hint = tracebackHint(output, { language });
+  const head = text(language) === 'tr'
+    ? `${REMINDER_TAG} Bitirmeden önce testi çalıştırdım ve BAŞARISIZ oldu (deneme ${attempt}/${max}). Komut: ${command} (çıkış kodu ${code}). Kendi kodundaki hatayı düzelt, sonra testi tekrar çalıştır; testler geçmeden "bitti" deme.`
+    : `${REMINDER_TAG} Before finishing I ran the tests and they FAILED (attempt ${attempt}/${max}). Command: ${command} (exit code ${code}). Fix the bug in your own code, then run the tests again; do not say "done" until they pass.`;
+  return join([head, `Output:\n${clip(output, 2500)}`, hint, AGAIN[text(language)]]);
+}
+
+// Deneme hakkı bitti: kullanıcıya gösterilen son rapor eki
+function verifyGaveUp({ command, attempts, output, language } = {}) {
+  const last = String(output || '').trim().split('\n').filter(Boolean).slice(-3).join(' | ').slice(0, 300);
+  return text(language) === 'tr'
+    ? `[doğrulama başarısız] ${attempts} düzeltme denemesinden sonra testler hâlâ geçmiyor (${command}). Görev tamamlanmış sayılmamalı. Son çıktı: ${last}`
+    : `[verification failed] Tests still fail after ${attempts} fix attempts (${command}). Do not treat the task as complete. Last output: ${last}`;
+}
+
+const REQ_KEY = /\b(must|should|shall|required|never|always|raises?|returns?|exits?|prints?|accepts?|rejects?)\b|zorunlu|olmalı|olmamalı|gerek|fırlat|döndür|hata ver|çıkış kodu|yazdır|geçersiz/i;
+
+// Görev metninden gereksinim listesi: önce madde işaretli satırlar, azsa anahtar kelimeli cümleler
+function requirementsFrom(src, { max = 15 } = {}) {
+  const lines = String(src || '').split(/\r?\n/);
+  const items = [];
+  const add = (s) => {
+    const v = s.replace(/[*`#]|__/g, '').replace(/\s+/g, ' ').trim();
+    if (v.length >= 8 && !items.includes(v)) items.push(v.length > 200 ? `${v.slice(0, 200)}…` : v);
+  };
+  for (const l of lines) { const m = /^\s*(?:[-*•]|\d+[.)])\s+(.+\S)\s*$/.exec(l); if (m) add(m[1]); }
+  if (items.length < 3) {
+    for (const l of lines) for (const s of l.split(/(?<=[.!?])\s+/)) if (REQ_KEY.test(s) && s.length < 240) add(s);
+  }
+  return items.slice(0, max);
+}
+
+// Bitirmeden önce her maddeye kanıt iste (tur başına bir kez)
+function requirementsCheck(reqs, { language } = {}) {
+  const list = (reqs || []).map((r, i) => `${i + 1}. ${r}`).join('\n');
+  return text(language) === 'tr'
+    ? `${REMINDER_TAG} Bitirmeden önce görev şartnamesi:\n${list}\nHer numaralı madde için TEK satır kanıt ver: onu kanıtlayan test adı/komut çıktısı veya dosya:satır. Kanıtı olmayan madde için iddia etme; şimdi testini yaz/çalıştır. Hepsi kanıtlıysa kontrol listesini ve kısa son raporu yaz. ${AGAIN.tr}`
+    : `${REMINDER_TAG} Before you finish, the task requirements were:\n${list}\nFor EACH numbered item give ONE line of evidence: the test name or command output that proves it, or file:line. Do not claim an item without evidence; write or run its check now. If every item is evidenced, reply with the checklist and a short final report. ${AGAIN.en}`;
+}
+
+// Zayıf/küçük model profili: sistem istemine eklenen adım adım çalışma bloğu
+function scaffold({ language } = {}) {
+  return text(language) === 'tr'
+    ? ['[SCAFFOLD]',
+      'Küçük, doğrulanmış adımlarla çalış:',
+      '1. Uygulama kodunu yazmadan önce şartnamedeki gereksinimler için testleri yaz (sınır durumları ve hata yolları dahil) ve bir kez çalıştırıp doğru nedenle başarısız olduğunu gör.',
+      '2. Adım başına TEK dosya veya TEK küçük değişiklik yaz. Her write_file/edit_file sonrası testleri run_command ile çalıştır ve sonucu oku; sonra sonraki adıma geç.',
+      '3. Test başarısızsa önce kendi uygulamanı düzelt; testi yalnızca görev metniyle çelişiyorsa değiştir.',
+      '4. Tam test komutu bu oturumda çalışıp geçmeden "bitti" deme. Gerçek komutu ve geçen test sayısını raporla.',
+      '5. Adımları kısa tut; küçük düzenleme yetiyorsa dosyayı baştan yazma.'].join('\n')
+    : ['[SCAFFOLD]',
+      'Work in small, verified steps:',
+      '1. Before writing implementation code, write tests for the stated requirements (edge cases and error paths included) and run them once to see them fail for the right reason.',
+      '2. Write ONE file or ONE small change per step. After every write_file/edit_file, run the tests with run_command and read the result before the next step.',
+      '3. If a test fails, fix your own implementation first; change a test only when it contradicts the task text.',
+      '4. Never say "done" until the full test command has run and passed in this session. Report the exact command and the pass count.',
+      '5. Keep steps short; do not rewrite a whole file when a small edit is enough.'].join('\n');
+}
+
+const TB_KINDS = 'AttributeError|ImportError|ModuleNotFoundError|NameError|UnboundLocalError|TypeError|SyntaxError|IndentationError|ReferenceError|NotImplementedError';
+const TB_FOREIGN = /site-packages|dist-packages|[\\/]lib[\\/]python|[\\/]Lib[\\/]|<frozen|node_modules|node:internal|<string>/i;
+
+// Tool çıktısında kodun kendi hatası (AttributeError, ImportError, NameError…) varsa düzeltme ipucu; yoksa ''
+function tracebackHint(output, { language } = {}) {
+  const s = String(output || '');
+  const m = new RegExp(`^\\s*(?:E\\s+)?(?:[\\w.]+\\.)?(${TB_KINDS}): .+$`, 'm').exec(s);
+  if (!m) return '';
+  if (!/Traceback \(most recent call last\)|^\s*File ".+", line \d+|^\s+at .+:\d+:\d+/m.test(s)) return ''; // düz metin içinde geçen ad: ipucu verme
+  const frames = [...s.matchAll(/File "(.+?)", line (\d+)/g)].filter((f) => !TB_FOREIGN.test(f[1]));
+  const last = frames[frames.length - 1];
+  const where = last ? ` (${String(last[1]).split(/[\\/]/).pop()}:${last[2]})` : '';
+  return text(language) === 'tr'
+    ? `[ipucu] ${m[1]} büyük olasılıkla KENDİ kodundaki bir hata${where}: eksik öznitelik/ad/import/imza. O dosya ve satırı oku, uygulamayı düzelt, sonra yeniden çalıştır. Hatayı gizlemek için testi değiştirme; yerel modül için paket kurmaya çalışma.`
+    : `[hint] ${m[1]} is most likely a bug in YOUR code${where}: a missing attribute, name, import or signature. Read that file and line, fix the implementation, then re-run. Do not edit the test to hide it, and do not try to install a package for a local module.`;
+}
+
 // ---------- birleşik sistem istemleri ----------
 
 // input: { cwd, platform, language, mode, agents, skills, instructionFiles, todo, dependencies, retry, budget }
@@ -179,6 +264,26 @@ function leadSystem(input = {}) {
     taskMode({ mode: input.mode || 'normal', language: input.language }),
     dynamic(input),
   ]);
+}
+
+// Sade mod (küçük/yerel modeller): kısa istem, orkestrasyon yok, yalnızca temel dosya/kabuk araçları
+function simpleSystem(input = {}) {
+  const tr = text(input.language) === 'tr';
+  const rules = tr ? [
+    '[SIMPLE]',
+    'Kodu doğrudan sen yaz. Dosya oluşturmak için write_file, değiştirmek için edit_file, okumak için read_file, listelemek için list_dir, komut için run_command kullan.',
+    'Bir aracı çağırmak için yalnızca araç çağrısını gönder; çağrıyı metin olarak anlatma.',
+    'Bir dosyayı yazdım demeden önce write_file çağrısını gerçekten yap. Yapmadığın işi yapılmış gibi raporlama.',
+    'İş bitince kısaca neyi oluşturduğunu/değiştirdiğini dosya yollarıyla söyle.',
+  ] : [
+    '[SIMPLE]',
+    'Write the code yourself. Use write_file to create files, edit_file to change them, read_file to read, list_dir to list, run_command for shell commands.',
+    'To use a tool, emit the tool call itself; do not describe the call in prose.',
+    'Never claim a file was written unless you actually called write_file. Do not report work you did not do.',
+    'When done, briefly list the files you created or changed.',
+  ];
+  const files = (input.instructionFiles || []).map((f) => `--- ${f.path} ---\n${f.text}`);
+  return join([base(input), rules.join('\n'), files.length ? files.join('\n\n') : '']);
 }
 
 // ctx.header = base katmanı; builtin ajanın prompt'u zaten [ROLE:x] ile başlar
@@ -224,8 +329,13 @@ const TOOLS = {
   todo_write: 'Use only for 3+ genuinely distinct steps or when the user asks for a checklist. Send the full list every time; use exactly one in_progress item and mark it completed immediately. ' +
     'For orchestra work, set agent, prompt, and depends_on on delegated items, then call run_plan. Do not use it for a one-step task, a question, or chat.',
   use_skill: 'Load the full instructions of a named skill.',
+  memory_save: 'Save one durable fact about the user or project that future sessions need and that the code or git history does not already record ' +
+    '(user preferences, corrections, project decisions and constraints, pointers to external resources). Not for task progress, code structure, or anything derivable from the repo. ' +
+    'NEVER save secrets, API keys, tokens or passwords. One fact per name; saving an existing name overwrites it.',
+  memory_forget: 'Delete a saved memory by name when it is wrong, outdated, or the user asks you to forget it.',
   spawn_agent: 'Delegate a self-contained subtask to a subagent that starts with a fresh context. ' +
-    'Call it several times in one response to run subagents in parallel. Returns the subagent\'s final report.',
+    'Call it several times in one response to run subagents in parallel. Returns the subagent\'s final report. ' +
+    'Set isolation: "worktree" for risky or parallel write tasks in a git repo: it works in a separate worktree/branch; changes are kept unmerged and the report gives path, branch and diff stat (tell the user).',
   spawn_syzer: 'Start an independent Syzer worker in its OWN visible Orca terminal tab (a full separate Syzer process with its own context). ' +
     'Use for larger parallel jobs the user should be able to watch. Call it several times in one response to run workers in parallel. ' +
     'Returns the worker\'s final report when it finishes.',
@@ -262,6 +372,8 @@ function failure(code, detail, hint, extra = {}) {
 }
 
 module.exports = {
+  simpleSystem,
+  verifyFailure, verifyGaveUp, requirementsFrom, requirementsCheck, scaffold, tracebackHint,
   base, role, taskMode, planPrefix, dynamic, leadSystem, subagentSystem,
   todoReminder, orchestraRules, dependencyContext, retryNotice, budgetNotice,
   summarySystem, summaryPrompt, summaryAck, toolDescription,

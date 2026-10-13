@@ -267,7 +267,8 @@ async function start(cfg, opts = {}, io = {}) {
         console.log(`${C.yellow('?')} ${C.bold(kind)} ${C.gray(trunc(summary.replace(/\s+/g, ' '), 100))}`);
         if (preview) console.log(preview.split('\n').map((l) => '  ' + l).join('\n'));
         console.log(`  ${C.gray(t('confirm_legend'))}`);
-        const a = await editor.readKey(`  ${t('confirm_q')} ${C.gray('[y/n/a/r]')} `);
+        const a = await editor.readKey(`  ${t('confirm_q')} ${C.gray('[y/n/a/r/p]')} `);
+        if (a === 'p') return 'session'; // bu oturum için izin ver (diske yazılmaz)
         if (a === 'a') return 'always';
         if (a === 'r') return 'rule';
         return /^(y|e|j|s|o|t)/.test(a) ? 'yes' : 'no';
@@ -448,6 +449,7 @@ async function start(cfg, opts = {}, io = {}) {
         setTitle(cfg, left, r.keyIndex);
       }
       console.log(C.gray(`  ╌ ${parts.join(' · ')}`));
+      try { const sl = await require('./statusline').render(s); if (sl) console.log(`  ${sl}`); } catch { /* statusline turu bozmasın */ }
       if (left && left.remaining > 0 && left.remaining <= 5) s.out.warn(t('low_keys', r.keyIndex + 1, left.remaining));
       console.log('');
     } catch (err) {
@@ -555,7 +557,12 @@ async function start(cfg, opts = {}, io = {}) {
       }
       case 'provider': {
         const was = cfg.provider;
-        if (!cmds.providerCmd(cfg, arg || undefined)) return;
+        const [sub, ...pa] = String(arg || '').trim().split(/\s+/);
+        if (sub === 'remove' || sub === 'rm') { if (!cmds.providerRemove(cfg, pa[0])) return; }
+        else if (sub === 'add') { // /provider add <id> <url> [model] [key]
+          if (!pa[0] || !pa[1]) { console.log(C.gray('/provider add <id> <url> [model] [api-key]')); return; }
+          if (!(await cmds.providerAdd(cfg, { id: pa[0], base: pa[1], model: pa[2], key: pa[3] }))) return;
+        } else if (!cmds.providerCmd(cfg, arg || undefined)) return;
         if (cfg.provider !== was) {
           s.model = cfg.model;
           s.effort = cfg.effort;
@@ -636,6 +643,7 @@ async function start(cfg, opts = {}, io = {}) {
         const skill = s.ctx.skills.find((k) => k.name === cmd);
         if (command) await chat(loadBody(command.file, arg));
         else if (skill) await chat(`Use the skill "${skill.name}" (call use_skill first).${arg ? `\n\nTask: ${arg}` : ''}`);
+        else if (await require('./slash-ext').run(cmd, arg, { session: s, cfg, chat, out: (l) => console.log(l), readKey: (q) => editor.readKey(q) })) return; // src/ext/*.js uzantı komutları
         else console.log(C.yellow(t('unknown_cmd', '/' + cmd)));
       }
     }

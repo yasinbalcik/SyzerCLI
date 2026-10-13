@@ -24,7 +24,8 @@ async function allModels({ refresh = false, cacheOnly = false } = {}) {
     } catch { /* önbellek yok */ }
   }
   if (cacheOnly) throw new Error('no cache');
-  const data = (await getJson('/models', null, 20000, p)).data;
+  const key = p.custom && !p.keyless ? (config.loadKeys(p.id).keys[0] || {}).key : null; // özel sağlayıcı /models için key isteyebilir
+  const data = (await getJson('/models', key, 20000, p)).data;
   try {
     fs.mkdirSync(config.DIR, { recursive: true });
     fs.writeFileSync(cacheFile(p), JSON.stringify({ ts: Date.now(), data }));
@@ -84,7 +85,9 @@ async function freeModels(query = '', opts = {}) {
   const q = query.toLowerCase();
   const raw = await allModels(opts);
   let list;
-  if (p.id === 'nvidia') {
+  if (p.custom) {
+    list = raw.map((m) => ({ id: m.id, name: m.name || m.id, ctx: m.context_length || m.context_window || 0, tools: null, reasoning: null, status: 'ok' }));
+  } else if (p.id === 'nvidia') {
     const checks = (readChecks(p) || {}).results || {};
     list = raw
       .filter((m) => !NOT_CHAT.test(m.id))
@@ -149,4 +152,31 @@ async function fallbackChain(cfg, current) {
   } catch { return []; }
 }
 
-module.exports = { allModels, freeModels, isFree, supportsImages, supportsReasoning, fallbackChain, checkModels, readChecks };
+// ---------- zayıf model profili ----------
+
+const STRONG_MODEL = /claude|opus|sonnet|fable|gpt-[45]|\bo[134](?:-|$)|gemini[\w.-]*pro|grok-[34]|deepseek-(?:v3|r1)|kimi-k2|glm-4\.[5-9]|nemotron[\w.-]*(?:ultra|super)|gpt-oss-120b/i;
+const WEAK_MODEL = /nano|mini|tiny|small|lite|\be[24]b\b|phi-?[234]|smollm/i;
+
+// Model kimliğindeki en büyük parametre sayısı (milyar); bulunamazsa null. "30b-a3b" → 30
+function paramSize(id) {
+  const sizes = [...String(id).matchAll(/(?<![a-z\d.])(\d+(?:\.\d+)?)\s?b(?![a-z])/gi)].map((m) => Number(m[1]));
+  return sizes.length ? Math.max(...sizes) : null;
+}
+
+// Sade/iskeleli (scaffolded) çalışma modu: küçük, yerel (Ollama vb.) ya da sade moddaki sağlayıcı modelleri için.
+// Ayar: cfg.scaffold = 'auto' (varsayılan) | 'on' | 'off'; ortam: SYZER_SCAFFOLD=on|off
+function scaffoldFor(cfg, id) {
+  const env = String(process.env.SYZER_SCAFFOLD || '').toLowerCase();
+  const raw = env || (cfg && cfg.scaffold !== undefined && cfg.scaffold !== null ? String(cfg.scaffold).toLowerCase() : 'auto');
+  if (['on', 'true', '1', 'yes'].includes(raw)) return true;
+  if (['off', 'false', '0', 'no'].includes(raw)) return false;
+  const model = String(id || '');
+  if (STRONG_MODEL.test(model)) return false;
+  const size = paramSize(model);
+  if (size !== null) return size <= 14;
+  if (WEAK_MODEL.test(model)) return true;
+  const p = providers.current() || {};
+  return !!(p.custom || p.simple);
+}
+
+module.exports = { allModels, freeModels, isFree, supportsImages, supportsReasoning, fallbackChain, checkModels, readChecks, scaffoldFor, paramSize };

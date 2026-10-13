@@ -22,7 +22,11 @@ const HELP = `SyzerCLI v${pkg.version}
 
   syzer                       interactive chat (agent with file tools)
   syzer [flags] "prompt"      one-shot answer (for scripts / orchestration)
-  syzer provider [openrouter|nvidia]  switch provider (each has its own key file)
+  syzer provider [id]              switch provider (each has its own key file)
+  syzer provider add [id] [--url u] [--name n] [--api-key k] [-m model]  add any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio…); asks for missing fields
+  syzer provider remove <id>      delete a custom provider
+  syzer provider simple <id> on|off  simple mode for small/local models: short prompt, only file+shell tools (add: --simple)
+  syzer bench <model> [--task name] [--baseline] [--keep] [--json]  run test/bench tasks against a model and score with the hidden tests (syzer bench list)
   syzer key add [keys|--file f]  add many keys at once; provider is detected from the key format
   syzer key list | use <n> | remove <n> | reset | test | prune  (test/prune print JSON; --provider p)
   syzer key usage --json [--provider p] [--all | --budget-ms N]   refresh + list per-key quota (cached, bounded)
@@ -78,6 +82,13 @@ function parseArgs(argv) {
     else if (a === '--summary') f.summary = true;
     else if (a === '--no-update') f.noUpdate = true;
     else if (a === '--all') f.all = true;
+    else if (a === '--url') f.url = argv[++i];
+    else if (a === '--simple') f.simple = true;
+    else if (a === '--task') f.task = argv[++i];
+    else if (a === '--keep') f.keep = true;
+    else if (a === '--baseline') f.baseline = true;
+    else if (a === '--name') f.name = argv[++i];
+    else if (a === '--api-key') f.apiKey = argv[++i];
     else if (a === '--online') f.online = true;
     else if (a === '--provider') f.provider = argv[++i];
     else if (a === '-e' || a === '--effort') f.effort = argv[++i];
@@ -258,6 +269,25 @@ async function main() {
       default: return console.log(HELP);
     }
   }
+  if (cmd === 'provider' && (sub === 'remove' || sub === 'rm')) return cmds.providerRemove(cfg, more[0]);
+  if (cmd === 'provider' && sub === 'simple') return cmds.providerSimple(cfg, more[0], more[1]);
+  if (cmd === 'provider' && sub === 'add') {
+    const d = { id: more[0], base: f.url || more[1], name: f.name, model: f.model, key: f.apiKey, simple: f.simple };
+    if (process.stdin.isTTY && (!d.id || !d.base)) { // eksik bilgi: sor
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const ask = (q, def) => new Promise((res) => rl.question(`${q}${def ? C.gray(` [${def}]`) : ''}: `, (a) => res(a.trim() || def || '')));
+      console.log(C.bold(t('pa_title')));
+      try {
+        d.id = await ask(t('pa_id'), d.id);
+        d.name = await ask(t('pa_name'), d.name || d.id);
+        d.base = await ask(t('pa_base'), d.base || 'http://localhost:11434/v1');
+        d.key = await ask(t('pa_key'), d.key);
+        d.model = await ask(t('pa_model'), d.model);
+      } finally { rl.close(); }
+    }
+    return cmds.providerAdd(cfg, d, { check: !f.noCheck });
+  }
+  if (cmd === 'bench') return require('../src/bench').run(f, sub); // test/bench görevlerini modele ver, gizli testle puanla
   if (cmd === 'provider') return cmds.providerCmd(cfg, sub);
   if (cmd === 'orca') return require('../src/orca-bridge').run(process.argv.slice(process.argv.indexOf('orca') + 1)); // eklenti: github.com/yasinbalcik/SyzerCLI-Orca
   if (cmd === 'doctor') return require('../src/doctor').run(cfg, { online: f.online });

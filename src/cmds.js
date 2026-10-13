@@ -23,8 +23,9 @@ function providerCmd(cfg, id) {
     for (const p of all) {
       const n = p.id === cfg.provider ? cfg.keys.length : config.loadKeys(p.id).keys.length;
       const model = p.id === cfg.provider ? cfg.model : (config.load && readModel(p.id));
-      log(`${p.id === cfg.provider ? C.orange('▶') : ' '} ${C.cyan(p.id.padEnd(11))} ${C.gray(t('prov_row', n, model || p.defaultModel))}`);
+      log(`${p.id === cfg.provider ? C.orange('▶') : ' '} ${C.cyan(p.id.padEnd(11))} ${C.gray(t('prov_row', n, model || p.defaultModel || '—'))}${p.custom ? C.gray(`  · ${p.base}${p.simple ? ' · simple' : ''}`) : ''}`);
     }
+    log(C.gray(t('prov_add_hint')));
     return true;
   }
   const p = providers.PROVIDERS[id];
@@ -32,6 +33,49 @@ function providerCmd(cfg, id) {
   if (id !== cfg.provider) config.switchProvider(cfg, id);
   log(C.green(`✔ ${t('prov_set', p.name, cfg.model)}`));
   if (!cfg.keys.length) log(C.yellow(t('prov_nokeys', p.name)));
+  return true;
+}
+
+// Kullanıcı tanımlı (OpenAI uyumlu) sağlayıcı ekler. d: { id, name, base, model, key, keyless }
+async function providerAdd(cfg, d, { check = true } = {}) {
+  let rec;
+  try { rec = providers.addCustom(d); } catch (e) {
+    log(C.red(`✖ ${t(e.message === 'builtin' ? 'prov_add_builtin' : e.message === 'bad url' ? 'prov_add_badurl' : 'prov_add_badid')}`));
+    process.exitCode = 1; return false;
+  }
+  const p = providers.PROVIDERS[rec.id];
+  const key = String(d.key || '').trim() || 'no-key'; // key istemeyen sunucular (Ollama vb.) için yer tutucu
+  const store = rec.id === cfg.provider ? cfg : config.loadKeys(rec.id);
+  if (!store.keys.some((e) => e.key === key)) { store.keys.unshift({ key }); store.active = 0; }
+  if (rec.id === cfg.provider) config.save(cfg); else config.saveKeys(rec.id, store);
+  log(C.green(`✔ ${t('prov_added', rec.name, rec.base)}`));
+  if (check) {
+    try {
+      const j = await getJson('/models', key === 'no-key' ? null : key, 15000, p);
+      const ids = (j.data || []).map((m) => m.id);
+      log(C.gray(`  ${t('prov_add_models', ids.length, ids.slice(0, 8).join(', ') || '—')}`));
+      if (!rec.model && ids.length === 1) { rec.model = ids[0]; providers.addCustom({ ...rec }); }
+    } catch (e) { log(C.yellow(`  ${t('prov_add_unreach', `${e.status || ''} ${e.message}`.trim())}`)); }
+  }
+  providerCmd(cfg, rec.id);
+  if (!providers.PROVIDERS[rec.id].defaultModel && !readModel(rec.id)) log(C.yellow(t('prov_add_nomodel')));
+  return true;
+}
+
+function providerSimple(cfg, id, state) {
+  const on = !/^(off|0|false|kapat|kapalı)$/i.test(String(state || 'on'));
+  try { providers.setSimple(id, on); } catch { log(C.yellow(t('prov_rm_bad'))); process.exitCode = 1; return false; }
+  if (cfg.provider === id) providers.setCurrent(id);
+  log(C.green(`✔ ${t(on ? 'prov_simple_on' : 'prov_simple_off', id)}`));
+  return true;
+}
+
+function providerRemove(cfg, id) {
+  if (!id || !providers.PROVIDERS[id] || !providers.PROVIDERS[id].custom) { log(C.yellow(t('prov_rm_bad'))); process.exitCode = 1; return false; }
+  if (cfg.provider === id) config.switchProvider(cfg, 'openrouter');
+  providers.removeCustom(id);
+  try { require('fs').unlinkSync(config.keysFile(id)); } catch { /* yok */ }
+  log(C.green(`✔ ${t('prov_removed', id)}`));
   return true;
 }
 
@@ -379,5 +423,5 @@ async function subagentSet(cfg, args) {
 
 module.exports = {
   agentsList, subagentSet, effortSet, fallbackSet, statsShow, EFFORTS, fetchInfo,
-  usageSummary, keyAdd, keyList, keyRemove, keyUse, keyReset, usage, modelsList, modelsCheck, modelSet, modelPick, langSet, permSet, providerCmd, vlen,
+  usageSummary, keyAdd, keyList, keyRemove, keyUse, keyReset, usage, modelsList, modelsCheck, modelSet, modelPick, langSet, permSet, providerCmd, providerAdd, providerRemove, providerSimple, vlen,
 };

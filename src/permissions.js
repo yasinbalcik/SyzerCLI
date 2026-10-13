@@ -9,6 +9,7 @@ const CLAUDE_NAME = {
   read_file: 'Read', write_file: 'Write', edit_file: 'Edit', list_dir: 'LS', find_files: 'Glob',
   search_files: 'Grep', run_command: 'Bash', run_background: 'Bash', web_fetch: 'WebFetch', web_search: 'WebSearch',
   spawn_agent: 'Task', run_plan: 'Task', use_skill: 'Skill', todo_write: 'TodoWrite',
+  memory_save: 'MemorySave', memory_forget: 'MemoryForget',
 };
 
 const FILE_TOOLS = new Set(['read_file', 'write_file', 'edit_file', 'list_dir']);
@@ -65,10 +66,11 @@ function matchPattern(name, pattern, input, cwd) {
   return false;
 }
 
-// 'deny' | 'allow' | null  (+ eşleşen kural)
+// 'deny' | 'ask' | 'allow' | null  (+ eşleşen kural). Öncelik: deny > ask > allow.
+// 'ask': auto modda ve allow kuralı olsa bile her seferinde onay istenir.
 function decide(settings, name, input, cwd) {
   if (!settings) return { verdict: null };
-  for (const kind of ['deny', 'allow']) {
+  for (const kind of ['deny', 'ask', 'allow']) {
     for (const rule of settings[kind] || []) {
       const r = parseRule(rule);
       if (r && toolMatches(r.tool, name) && matchPattern(name, r.pattern, input, cwd)) return { verdict: kind, rule };
@@ -89,7 +91,8 @@ function suggestRule(name, input) {
   return CLAUDE_NAME[name] || name;
 }
 
-function isOutside(cwd, p, fsImpl = fs) {
+// extraDirs: settings.additionalDirectories (mutlak yollar); bunlardan birinin altındaki hedef "dışarıda" sayılmaz.
+function isOutside(cwd, p, fsImpl = fs, extraDirs = null) {
   if (fsImpl && fsImpl.fsImpl) fsImpl = fsImpl.fsImpl;
   const realpath = fsImpl.realpathSync && (fsImpl.realpathSync.native || fsImpl.realpathSync);
   if (typeof realpath !== 'function') return true;
@@ -132,7 +135,16 @@ function isOutside(cwd, p, fsImpl = fs) {
     const realWorkspace = resolveExisting(workspaceAbs);
     const realTarget = resolveExisting(targetAbs);
     const rel = path.relative(realWorkspace, realTarget);
-    return rel.startsWith('..') || path.isAbsolute(rel);
+    const outside = rel.startsWith('..') || path.isAbsolute(rel);
+    if (!outside) return false;
+    for (const dir of Array.isArray(extraDirs) ? extraDirs : []) {
+      try {
+        const realDir = resolveExisting(path.resolve(workspaceAbs, String(dir)));
+        const r = path.relative(realDir, realTarget);
+        if (!r.startsWith('..') && !path.isAbsolute(r)) return false;
+      } catch { /* okunamayan ek klasör: güvenli taraf (dışarıda) */ }
+    }
+    return true;
   } catch {
     // Any inability to establish the real path is the safe (outside) answer.
     return true;

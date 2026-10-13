@@ -7,6 +7,7 @@ const config = require('./config');
 const { writeJsonAtomic } = require('./atomic-json');
 
 const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
+const strList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()) : []);
 
 // Okunan dosyalar (sıra: kullanıcı → proje).
 // Kendi dosyalarımız tam yetkilidir. Claude Code ayarlarından yalnızca `deny` kuralları alınır:
@@ -36,16 +37,32 @@ function normalizeHooks(list) {
 }
 
 function load(cwd) {
-  const s = { allow: [], deny: [], hooks: { PreToolUse: [], PostToolUse: [] }, mcpServers: {}, sources: [] };
+  const s = { allow: [], deny: [], ask: [], additionalDirectories: [], origins: [], hooks: { PreToolUse: [], PostToolUse: [], UserPromptSubmit: [], Stop: [], SessionStart: [], PreCompact: [], SubagentStop: [] }, mcpServers: {}, sources: [] };
+  // Etkin plugin kancaları/MCP sunucuları en düşük öncelikle girer (kullanıcı dosyaları üzerine yazar)
+  try {
+    const pl = require('./plugins');
+    for (const [ev, l] of Object.entries(pl.hooks())) (s.hooks[ev] ||= []).push(...normalizeHooks(l));
+    Object.assign(s.mcpServers, pl.mcpServers());
+  } catch { /* plugin hatası ayarları bozmasın */ }
   for (const { file, own } of files(cwd)) {
     const j = read(file);
     if (!j) continue;
     s.deny.push(...(j.permissions?.deny || []));
+    // ask: kısıtlayıcı olduğu için deny gibi Claude dosyalarından da okunur; additionalDirectories yalnızca kendi dosyalarımızdan
+    s.ask.push(...strList(j.permissions?.ask));
+    for (const k of ['deny', 'ask']) for (const r of strList(j.permissions?.[k])) s.origins.push({ kind: k, rule: r, file });
+    if (own) {
+      for (const r of strList(j.permissions?.allow)) s.origins.push({ kind: 'allow', rule: r, file });
+      for (const d of [...strList(j.permissions?.additionalDirectories), ...strList(j.additionalDirectories)]) {
+        const abs = path.resolve(cwd, d.replace(/^~(?=$|[\\/])/, os.homedir()));
+        if (!s.additionalDirectories.includes(abs)) s.additionalDirectories.push(abs);
+      }
+    }
     if (!own) { if ((j.permissions?.deny || []).length) s.sources.push(file); continue; }
     s.sources.push(file);
     s.allow.push(...(j.permissions?.allow || []));
-    s.hooks.PreToolUse.push(...normalizeHooks(j.hooks?.PreToolUse));
-    s.hooks.PostToolUse.push(...normalizeHooks(j.hooks?.PostToolUse));
+    if (j.statusLine && (typeof j.statusLine === 'string' || typeof j.statusLine === 'object')) s.statusLine = j.statusLine; // sonraki dosya öncelikli
+    for (const ev of Object.keys(s.hooks)) s.hooks[ev].push(...normalizeHooks(j.hooks?.[ev]));
     Object.assign(s.mcpServers, j.mcpServers || {});
   }
   // MCP: Claude'un .mcp.json dosyası ve bizim mcp.json dosyaları

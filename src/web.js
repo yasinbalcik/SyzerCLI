@@ -163,7 +163,7 @@ function start(cfg, { port = 8788, host = '127.0.0.1', open = true, cwd = proces
       }
       if (url.pathname === '/api/confirm') {
         const r = pending.get(body.id);
-        if (r) { pending.delete(body.id); r(['yes', 'no', 'always', 'rule'].includes(body.answer) ? body.answer : 'no'); }
+        if (r) { pending.delete(body.id); r(['yes', 'no', 'always', 'rule', 'session'].includes(body.answer) ? body.answer : 'no'); }
         return send(res, 200, { ok: true });
       }
       if (url.pathname === '/api/skills/translate') {

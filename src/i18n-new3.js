@@ -3,6 +3,15 @@
 // Sağlayıcı (OpenRouter / NVIDIA) ile ilgili metinler.
 module.exports = {
   en: {
+    prov_add_hint: 'Add your own (Ollama, vLLM, LM Studio, any OpenAI-compatible API): syzer provider add',
+    prov_added: 'Provider saved: {0} · {1}', prov_removed: 'Provider removed: {0}',
+    prov_add_badid: 'Invalid id: lowercase letters, digits, - or _ (max 31).', prov_add_badurl: 'Invalid URL: must start with http:// or https:// (e.g. http://localhost:11434/v1).',
+    prov_add_builtin: 'That id belongs to a built-in provider; pick another.', prov_rm_bad: 'Not a custom provider. List: syzer provider',
+    prov_add_models: '{0} model(s): {1}', prov_add_unreach: 'Could not reach /models yet ({0}). Saved anyway; check the URL/key or start the server.',
+    prov_add_nomodel: 'No model set. Choose one: syzer model <id>  (list: syzer models)',
+    pa_title: 'Add a provider (OpenAI-compatible endpoint)', pa_id: 'Short id (e.g. lightning)', pa_name: 'Display name', pa_base: 'Base URL (ending in /v1, e.g. https://xxxx.litng.ai/v1)',
+    pa_key: 'API key (leave empty if none)', pa_model: 'Default model (optional, e.g. qwen2.5-coder:32b)',
+    prov_simple_on: 'Simple mode on for {0}: short prompt, file+shell tools only. Restart open sessions.', prov_simple_off: 'Simple mode off for {0}.',
     prov_title: 'Providers', prov_row: '{0} key(s) · model {1}',
     prov_set: 'Provider: {0} · model: {1}', prov_bad: 'Unknown provider. Choose: {0}',
     prov_nokeys: 'No keys saved for {0} yet. Add some: syzer key add <key>',
@@ -20,6 +29,15 @@ module.exports = {
     help5: '  /provider [name]          switch provider (openrouter, nvidia) — keys are kept per provider',
   },
   tr: {
+    prov_add_hint: 'Kendi sağlayıcını ekle (Ollama, vLLM, LM Studio, OpenAI uyumlu herhangi bir API): syzer provider add',
+    prov_added: 'Sağlayıcı kaydedildi: {0} · {1}', prov_removed: 'Sağlayıcı silindi: {0}',
+    prov_add_badid: 'Geçersiz id: küçük harf, rakam, - veya _ (en çok 31).', prov_add_badurl: 'Geçersiz URL: http:// veya https:// ile başlamalı (ör. http://localhost:11434/v1).',
+    prov_add_builtin: 'Bu id yerleşik bir sağlayıcıya ait; başka bir ad seç.', prov_rm_bad: 'Özel sağlayıcı değil. Liste: syzer provider',
+    prov_add_models: '{0} model: {1}', prov_add_unreach: '/models henüz erişilemedi ({0}). Yine de kaydedildi; URL ve key’i kontrol et ya da sunucuyu başlat.',
+    prov_add_nomodel: 'Model seçilmedi. Seç: syzer model <id>  (liste: syzer models)',
+    pa_title: 'Sağlayıcı ekle (OpenAI uyumlu uç nokta)', pa_id: 'Kısa id (ör. lightning)', pa_name: 'Görünen ad', pa_base: 'Temel URL (/v1 ile biten, ör. https://xxxx.litng.ai/v1)',
+    pa_key: 'API key (yoksa boş bırak)', pa_model: 'Varsayılan model (isteğe bağlı, ör. qwen2.5-coder:32b)',
+    prov_simple_on: '{0} için sade mod açık: kısa istem, yalnızca dosya+kabuk araçları. Açık oturumları yeniden başlat.', prov_simple_off: '{0} için sade mod kapalı.',
     prov_title: 'Sağlayıcılar', prov_row: '{0} key · model {1}',
     prov_set: 'Sağlayıcı: {0} · model: {1}', prov_bad: 'Bilinmeyen sağlayıcı. Seç: {0}',
     prov_nokeys: '{0} için henüz key kayıtlı değil. Ekle: syzer key add <key>',
