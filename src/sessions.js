@@ -74,4 +74,46 @@ function find(id) {
   try { return JSON.parse(fs.readFileSync(path.join(DIR, `${want}.json`), 'utf8')); } catch { return null; }
 }
 
-module.exports = { newId, save, list, find, slim };
+function textOf(value) {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(textOf).join(' ');
+  if (value && typeof value === 'object') return typeof value.text === 'string' ? value.text : '';
+  return '';
+}
+
+function dayStart(time) {
+  const d = new Date(time);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+function dateQuery(query, now) {
+  const q = query.toLowerCase();
+  const base = dayStart(now);
+  if (base === null) return null;
+  if (q === 'today') return base;
+  if (q === 'yesterday') return base - 86400000;
+  const ago = /^(\d+)\s+d$/.exec(q);
+  if (ago) return base - Number(ago[1]) * 86400000;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(q);
+  if (!iso) return null;
+  const target = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  return target.getFullYear() === Number(iso[1]) && target.getMonth() === Number(iso[2]) - 1 && target.getDate() === Number(iso[3]) ? target.getTime() : null;
+}
+
+// Oturum seçicisi için saf filtre: sıralamayı ve girdiyi korur.
+function filterSessions(items, query = '', now = Date.now()) {
+  if (!Array.isArray(items)) return [];
+  const q = String(query || '').trim();
+  if (!q) return items.slice();
+  const date = dateQuery(q, now);
+  if (date !== null) return items.filter((session) => dayStart(session && session.ts) === date);
+  const needle = q.toLowerCase();
+  return items.filter((session) => {
+    if (!session || typeof session !== 'object') return false;
+    const messageText = Array.isArray(session.messages) ? session.messages.map((message) => textOf(message && message.content)).join(' ') : '';
+    return [session.id, session.title, messageText].some((value) => String(value || '').toLowerCase().includes(needle));
+  });
+}
+
+module.exports = { newId, save, list, find, slim, filterSessions };

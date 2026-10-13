@@ -43,7 +43,7 @@ In chat, `/help` lists every command. `/plan` produces a read-only plan first, `
 
 ## Opening splash
 
-On start, an interactive terminal shows a rotating 3D logo until the first key; that key (and anything typed or pasted with it) then goes to the prompt as normal. `/logo` shows it again. It needs a terminal of at least 50x24, appears only in interactive terminals, and `SYZER_NO_LOGO=1` turns the opening splash off.
+When the rich fixed-screen view is off, an interactive terminal shows a rotating 3D logo until the first key; that key (and anything typed or pasted with it) then goes to the prompt as normal. It needs a terminal of at least 50x24, appears only in interactive terminals, and `SYZER_NO_LOGO=1` turns the opening splash off. There is no `/logo` command.
 
 ## Main commands
 
@@ -58,6 +58,8 @@ On start, an interactive terminal shows a rotating 3D logo until the first key; 
 | `syzer orca install --shortcut` | Orca integration (Windows) |
 
 Project instructions are read from `SYZER.md` (also `CLAUDE.md` / `AGENTS.md`); skills, commands and agents live in `.syzer/`.
+
+In the interactive prompt, Tab completes command names, the first argument of `/model`, `/lang`, `/perm`, `/provider`, and `/effort`, plus workspace `@file` paths. `/resume [query]` searches saved sessions by title/content, `today`, `yesterday`, `N d`, or `YYYY-MM-DD`. When key quota is exhausted, the terminal suggests `syzer key add`, `syzer usage`, and switching provider.
 
 ## Orca integration (Windows)
 
