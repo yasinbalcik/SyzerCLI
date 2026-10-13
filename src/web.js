@@ -166,6 +166,16 @@ function start(cfg, { port = 8788, host = '127.0.0.1', open = true, cwd = proces
         if (r) { pending.delete(body.id); r(['yes', 'no', 'always', 'rule'].includes(body.answer) ? body.answer : 'no'); }
         return send(res, 200, { ok: true });
       }
+      if (url.pathname === '/api/skills/translate') {
+        const texts = Array.isArray(body.texts) ? body.texts.slice(0, 400).map((x) => String(x || '').slice(0, 600)) : [];
+        const ask = async (prompt) => {
+          const { withRotation } = require('./keys');
+          const { chatStream } = require('./api');
+          const { result } = await withRotation(cfg, (entry) => chatStream({ key: entry.key, model: s.model, messages: [{ role: 'user', content: prompt }], effort: 'auto' }));
+          return (result && (result.content || result.text)) || '';
+        };
+        return send(res, 200, { texts: await require('./skill-i18n').translate(texts, cfg.lang, { dir: config.DIR, ask }) });
+      }
       if (url.pathname === '/api/pickfolder') {
         try { return send(res, 200, await require('./folder-pick').pickFolder({ title: body.title ? String(body.title).slice(0, 80) : undefined })); } catch (e) { return send(res, 501, { error: e.code || e.message }); }
       }
