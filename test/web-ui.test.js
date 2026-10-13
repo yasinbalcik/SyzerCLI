@@ -116,3 +116,15 @@ test('activity tracking does not break the stream event chain (text must not fal
   assert.doesNotMatch(html, /else actEvent\(e\)/);
   assert.match(html, /catch\{continue\}actEvent\(e\);if\(e\.type==='text'\)/);
 });
+
+test('line icon set, breadcrumb, collapsible activity sections and chip composer', () => {
+  assert.match(html, /<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">/);
+  assert.doesNotMatch(html, /id="(?:tl|theme-btn|act-btn)"[^>]*>[\u2630\u25d0\u25a5]/);
+  assert.match(html, /id="crumb-ws"/);
+  assert.match(html, /<span id="title"><\/span>/);
+  assert.match(html, /class="ahead" aria-expanded="false"/);
+  assert.match(html, /class="icon-btn plus" id="addat" data-a="mention"/);
+  assert.match(html, /id="m2" class="sel-chip"/);
+  assert.match(html, /ph:'Ask anything \u00b7 @ file \u00b7 \/ skill'/);
+  assert.match(html, /ph:'\u0130stedi\u011fini sor|ph:'\u0130stedi\u011fini sor \u00b7 @ dosya \u00b7 \/ beceri'/);
+});
