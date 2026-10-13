@@ -82,7 +82,7 @@ Eklenti Orca'da Syzer'ı birinci sınıf bir ajan yapar: ajan menüsü, canlı d
 
 ## Giriş her zaman açık
 
-Açılış ekranı: etkileşimli bir terminalde başlarken ilk tuşa kadar dönen 3D logo gösterilir; o tuş (ve onunla yazılan/yapıştırılan her şey) normal şekilde komut satırına geçer. `/logo` tekrar gösterir. En az 50x24 terminal gerekir, yalnızca etkileşimli terminallerde görünür; açılış ekranını kapatmak için `SYZER_NO_LOGO=1`.
+Açılış ekranı: zengin sabit-ekran görünümü kapalıyken etkileşimli bir terminalde ilk tuşa kadar dönen 3D logo gösterilir; o tuş (ve onunla yazılan/yapıştırılan her şey) normal şekilde komut satırına geçer. En az 50x24 terminal gerekir, yalnızca etkileşimli terminallerde görünür; açılış ekranını kapatmak için `SYZER_NO_LOGO=1`. `/logo` diye bir komut yoktur.
 
 Ajan çalışırken terminalin altında sabit bir alan kalır: durum satırı, çalışan alt ajanların canlı satırları (görev, son araç, adım, süre), sıradaki mesajlar ve giriş satırı. Çalışırken yeni mesaj yazıp Enter'a basarsan sıraya girer ve tur bitince çalışır; Ctrl+C yazılan metni siler, boşsa yanıtı durdurur. Alt ajanlar çalışırken girişin altında `main` + ajan listesi görünür (ad, görev, süre, token); giriş boşken **↓ / ←** ile listeye geç, **↑↓** ile seç, **Enter** ile ajanın canlı içeriğini (görev, her araç çağrısı ve sonucu, canlı çıktı, rapor) tam ekran aç, **Esc / ←** ile dön. Tur sürerken `/run <no>` de hemen çalışır. `/tree` ajan haritasını (canlı alt ajan ağacı ve olay günlüğü) gösterir. Canlı ajan paneli ana modeli ve her alt ajanın modelini, durumunu, o an yaptığı işi, adım sayısını, token'ını ve süresini kartlar halinde gösterir (canlı panel için en az 28 satır × 70 sütun gerekir; daha küçük terminallerde kompakt ajan satırlarına dönülür). Tur bitince (Ctrl+C dahil) sohbete kalıcı bir bitiş raporu yazılır: ⚠ yarıda kalan, ✖ başarısız, ◌ iptal edilen ajanlar işaretlenir. Kapatmak için `SYZER_NO_DOCK=1`. `SYZER_STALL_MS` (varsayılan 90000 ms): model isteğinden bu süre boyunca hiç veri gelmezse istek yeniden denenir / sıradaki yedek modele geçilir; çok yavaş akıl yürüten modeller için artırın.
 
@@ -143,7 +143,7 @@ echo "özetle" | syzer -
 
 ## Key havuzu
 
-- Aktif key'e yapışık kalır; yalnızca limiti dolunca (402/403/429) ya da geçersizse sıradakine geçer.
+- Aktif key'e yapışık kalır; yalnızca limiti dolunca (402/403/429) ya da geçersizse sıradakine geçer. Havuz tükendiğinde etkileşimli terminal `syzer key add`, `syzer usage` ve diğer sağlayıcıya geçiş komutlarını önerir.
 - Sunucu yoğunluğunda (5xx) aynı key'le bekleyip yeniden dener, sonra **yedek modele** geçer (`/fallback`).
 - `key use <n>` ile elle değiştirilir. Paralel alt ajanlar işleri kullanılabilir key'lere dağıtır.
 - Mevcut/bozuk key'ler "eklenemedi" diye bildirilir, geçerli olanlar eklenir.
@@ -165,12 +165,12 @@ echo "özetle" | syzer -
 | `/diff` `/commit` `/review` | git yardımcıları (commit mesajını model yazar) |
 | `/checkpoints` `/restore` | her turun ilk değişikliğinden önce alınan git anlık görüntüsü |
 | `/undo` | ajanın son dosya değişikliğini geri al |
-| `/resume` `-c` | kayıtlı oturuma devam |
+| `/resume [metin\|tarih]` `-c` | kayıtlı oturuma devam; başlık/içerik, `today`, `yesterday`, `N d` veya `YYYY-MM-DD` ile ara |
 | `/todos` `/tasks` | ajanın görev listesi · arka plan işlemleri |
 | `/init` · `# not` | SYZER.md üret · ona not ekle |
 | `/lang` | tr en de es ja zh ko pl |
 
-Yapıştırılan uzun metin `[Pasted text #1 +N lines]`, görsel dosya yolu `[Image #1]` olarak görünür; `@dosya` içeriği ekler.
+Yapıştırılan uzun metin `[Pasted text #1 +N lines]`, görsel dosya yolu `[Image #1]` olarak görünür; `@dosya` içeriği ekler. Tab; komut adını, `/model`, `/lang`, `/perm`, `/provider`, `/effort` ilk argümanını ve çalışma alanındaki `@dosya` yolunu tamamlar.
 
 ## Ajan araçları
 

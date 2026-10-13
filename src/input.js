@@ -461,17 +461,21 @@ class Editor {
 
   _tab() {
     if (!this.complete || this.dock) return;
-    const before = this.items.slice(0, this.cur);
-    if (before.some((x) => typeof x !== 'string')) return;
-    const text = before.join('');
-    const cands = this.complete(text);
+    if (this.items.some((x) => typeof x !== 'string')) return;
+    const line = this.items.join('');
+    let result;
+    try { result = this.complete(line, this.cur); } catch { return; }
+    const legacy = Array.isArray(result);
+    const cands = legacy ? result : result && result.candidates;
     if (!cands.length) return;
+    const range = legacy ? { start: 0, end: this.cur } : result.range;
+    if (!range || !Number.isInteger(range.start) || !Number.isInteger(range.end) || range.start < 0 || range.end < range.start || range.end > line.length) return;
     let fill = cands[0];
     for (const c of cands) { while (!c.startsWith(fill)) fill = fill.slice(0, -1); }
-    if (cands.length === 1) fill += ' ';
-    if (fill.length > text.length) {
-      this.items.splice(0, this.cur, ...fill);
-      this.cur = fill.length;
+    if (cands.length === 1 && range.end === line.length) fill += ' ';
+    if (fill !== line.slice(range.start, range.end)) {
+      this.items.splice(range.start, range.end - range.start, ...fill);
+      this.cur = range.start + fill.length;
     } else if (this.tty && !this._framed) {
       this.out.write('\r\x1b[2K' + C.gray(cands.join('  ')) + '\n');
     }

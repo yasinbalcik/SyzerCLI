@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const pkg = require('../package.json');
-const { t, setLang, getLang } = require('./i18n');
+const { t, setLang, getLang, LANGS } = require('./i18n');
 const P = require('./prompts');
 const { LIMITS } = require('./limits');
 const { C, box, pad, trunc, spinner, MdStream, vlen } = require('./ui');
@@ -29,6 +29,8 @@ const header = require('./header');
 const cmdinfo = require('./cmdinfo');
 const { Scrollback } = require('./scrollback');
 const { headerRows } = header;
+const { complete: completeLine } = require('./complete');
+const { quotaGuide } = require('./quota-guide');
 
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const BUILTIN = ['help', 'model', 'models', 'usage', 'keys', 'lang', 'perm', 'skills', 'context', 'clear', 'exit',
@@ -36,6 +38,37 @@ const BUILTIN = ['help', 'model', 'models', 'usage', 'keys', 'lang', 'perm', 'sk
   'rules', 'allow', 'deny', 'mcp', 'compact', 'diff', 'commit', 'review', 'checkpoints', 'restore', 'todos', 'tasks', 'init', 'provider', 'web', 'runs', 'run', 'tree', 'budget', 'continue', 'route'];
 const LABEL = { read_file: 'Read', write_file: 'Write', edit_file: 'Update', list_dir: 'List', find_files: 'Find', search_files: 'Search', run_command: 'Run', use_skill: 'Skill', spawn_agent: 'Agent', run_plan: 'Plan' };
 const planPrefix = () => P.planPrefix(getLang());
+
+const COMPLETE_SKIP = new Set(['.git', 'node_modules', 'dist', 'build', '.next', '__pycache__', '.venv']);
+
+// Yalnızca Tab bağlayıcısının aday kaynağı: sınırlı, salt-okunur bir çalışma alanı taraması.
+function mentionFiles(cwd, max = 300) {
+  const files = [];
+  const queue = [{ abs: cwd, rel: '', depth: 0 }];
+  while (queue.length && files.length < max) {
+    const current = queue.shift();
+    let entries;
+    try { entries = fs.readdirSync(current.abs, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      if (files.length >= max) break;
+      if (entry.isDirectory()) {
+        if (current.depth < 6 && !COMPLETE_SKIP.has(entry.name)) queue.push({ abs: path.join(current.abs, entry.name), rel: path.join(current.rel, entry.name), depth: current.depth + 1 });
+      } else if (entry.isFile()) files.push(path.join(current.rel, entry.name).replace(/\\/g, '/'));
+    }
+  }
+  return files;
+}
+
+function cachedModels(cfg, session) {
+  const out = [session.model];
+  if (Array.isArray(cfg.fallback)) out.push(...cfg.fallback);
+  try {
+    const file = path.join(require('./config').DIR, `models-cache.${providers.current().id}.json`);
+    const cached = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (Array.isArray(cached.data)) out.push(...cached.data.map((model) => model && model.id));
+  } catch { /* önbellek yok: geçerli model yine tamamlanabilir */ }
+  return out;
+}
 
 function banner(s, reasoning) {
   const cols = process.stdout.columns || 80;
@@ -205,12 +238,20 @@ function resume(s, saved, { show = false } = {}) {
 }
 
 async function start(cfg, opts = {}, io = {}) {
+  let files = [];
   const editor = new Editor({
     ...io,
-    complete: (text) => {
-      if (!text.startsWith('/') || text.includes(' ')) return [];
+    complete: (line, cursor) => {
       const names = [...BUILTIN, ...s.ctx.skills.map((k) => k.name), ...s.ctx.commands.map((k) => k.name)].map((n) => '/' + n);
-      return [...new Set(names)].filter((n) => n.startsWith(text));
+      return completeLine(line, cursor, {
+        commands: names,
+        models: cachedModels(cfg, s),
+        languages: Object.keys(LANGS),
+        permissions: ['ask', 'auto', 'readonly'],
+        providers: providers.list().map((provider) => provider.id),
+        efforts: cmds.EFFORTS,
+        files,
+      });
     },
   });
   const getPrompt = () => `${s.plan ? C.cyan('plan ') : ''}${C.orange('❯')} `;
@@ -238,6 +279,7 @@ async function start(cfg, opts = {}, io = {}) {
   };
 
   const s = createSession(cfg, { ...opts, canAsk: true, confirm, out: makeOut() });
+  files = mentionFiles(s.cwd);
   s.budgetFlags = opts.budgetFlags;
   if (opts.resumeId) { const sv = sessions.find(opts.resumeId); if (sv) { if (sv.cwd && sv.cwd !== s.cwd) console.log(C.yellow(`⚠ ${sv.cwd}`)); resume(s, sv); } else console.log(C.yellow(`Oturum bulunamadı / Session not found: ${opts.resumeId}  (${require('./config').DIR})`)); }
   else if (opts.resume) { const last = sessions.list(s.cwd)[0]; if (last) resume(s, last); }
@@ -413,7 +455,12 @@ async function start(cfg, opts = {}, io = {}) {
       s.out.waiting(false);
       s.out.endText();
       if (err.name === 'AbortError') { try { tree.abortActive(); } catch { /* önemsiz */ } printReport(); console.log(C.gray(t('aborted')) + '\n'); }
-      else { printReport(); console.error(`${C.red('✖')} ${err.message}\n`); }
+      else {
+        printReport();
+        console.error(`${C.red('✖')} ${err.message}\n`);
+        const guide = quotaGuide(err, getLang(), { provider: cfg.provider, allKeysExhausted: cfg.keys.length > 0 && !cfg.keys.some(usable) });
+        if (guide) console.error(`${C.yellow('→')} ${guide.message}\n  ${guide.actions.join('  ·  ')}\n`);
+      }
     }
     ctrl = null;
     s.busy = false;
@@ -539,8 +586,9 @@ async function start(cfg, opts = {}, io = {}) {
         await chat('The plan is approved. Execute it now.');
         return;
       case 'resume': {
-        const list = sessions.list(s.cwd).slice(0, 9);
-        if (!list.length) { console.log(C.gray(t('sess_none'))); return; }
+        const matches = sessions.filterSessions(sessions.list(s.cwd), arg);
+        const list = matches.slice(0, 9); // seçici yalnız 1-9 tuşunu kabul eder
+        if (!list.length) { console.log(C.gray(t(arg ? 'sess_search_none' : 'sess_none'))); return; }
         list.forEach((x, i) => console.log(`  ${C.gray(String(i + 1))}  ${trunc(x.title, 60)}  ${C.gray(`${new Date(x.ts).toLocaleString()} · ${x.messages.length - 1} msg`)}`));
         const k = await editor.readKey(C.cyan(t('sess_pick')));
         const pick = list[parseInt(k, 10) - 1];
