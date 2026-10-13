@@ -49,7 +49,7 @@ async function probeTerminal(handle, signal) {
 }
 
 async function waitForWorkerResult(outFile, handle, {
-  probe = (h) => probeTerminal(h), sleep: wait = sleep, pollMs = 1000, settleMs = 300,
+  probe = (h, sig) => probeTerminal(h, sig), sleep: wait = sleep, pollMs = 1000, settleMs = 300,
   deadlineMs = 15 * 60 * 1000, signal, fsImpl = fs,
 } = {}) {
   const deadline = Date.now() + deadlineMs;
