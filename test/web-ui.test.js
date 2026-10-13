@@ -128,3 +128,16 @@ test('line icon set, breadcrumb, collapsible activity sections and chip composer
   assert.match(html, /ph:'Ask anything \u00b7 @ file \u00b7 \/ skill'/);
   assert.match(html, /ph:'\u0130stedi\u011fini sor|ph:'\u0130stedi\u011fini sor \u00b7 @ dosya \u00b7 \/ beceri'/);
 });
+
+test('message actions, code block headers, scrollbars and typography', () => {
+  assert.match(html, /class="copy-btn" data-copy="msg"/);
+  assert.match(html, /function enhance\(\)/);
+  assert.match(html, /\.chead\{/);
+  assert.match(html, /\.codeblock\{[^}]*border-radius:12px/);
+  assert.match(html, /scrollbar-width:thin/);
+  assert.match(html, /::-webkit-scrollbar-thumb\{/);
+  assert.match(html, /"Segoe UI Variable Text","Segoe UI",Inter/);
+  assert.match(html, /copied:'Kopyaland\u0131'/);
+  assert.match(html, /\[data-theme=light\] \.composer-box/);
+  assert.doesNotMatch(md('```js\nx\n```'), /codeblock/);
+});
